@@ -1,0 +1,8 @@
+module.exports = {
+  preset: 'jest-expo',
+  testMatch: ['<rootDir>/**/*.test.ts', '<rootDir>/**/*.test.tsx'],
+  setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
+  collectCoverageFrom: ['App.tsx', 'index.ts', 'src/**/*.{ts,tsx}', '!src/**/*.test.{ts,tsx}'],
+  clearMocks: true,
+  restoreMocks: true,
+};
