@@ -33,6 +33,8 @@ These rules apply to every job in this repository, including planning, documenta
 
 ## Maintainable design
 
+- Use the simplest correct design. This app does not need speculative hardening: safeguards must address a credible user action, device/storage failure, or saved-data risk. Do not add defensive layers for extremely unlikely sequences, generalized recovery machinery, or abstractions without a concrete need.
+- Implementation and review must justify safeguards by their realistic trigger and impact. If a check duplicates a reliable platform guarantee or complexity has no credible benefit, simplify it safely with focused regression coverage. Correctness, recoverable failures and saved-data protection still matter; integration tests remain out of scope.
 - Use clean, scalable, small, focused modules with clear responsibilities. Avoid massive classes, catch-all services, oversized components, and tightly coupled state.
 - Keep UI thin, domain behavior pure and testable where possible, and platform/media/storage concerns behind narrow adapters. Add abstractions when they solve a real boundary or repeated need, not in anticipation of every possible future feature.
 - Apply SOLID principles where they make the design clearer. Reuse code when the shared responsibility is genuine; do not create artificial generality or duplicate known rules.

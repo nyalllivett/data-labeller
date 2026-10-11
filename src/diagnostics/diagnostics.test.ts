@@ -1,15 +1,19 @@
 import { emitDiagnostic, type DiagnosticEvent } from './diagnostics';
 
-test.each<DiagnosticEvent>(['render.failed', 'render.retry_requested'])(
-  'writes only the fixed structured fields for %s',
-  (event) => {
-    const sink = jest.fn();
+test.each<DiagnosticEvent>([
+  'render.failed',
+  'render.retry_requested',
+  'storage.loading',
+  'storage.saving',
+  'storage.ready',
+  'storage.failed',
+])('writes only the fixed structured fields for %s', (event) => {
+  const sink = jest.fn();
 
-    expect(emitDiagnostic(event, sink)).toBe(true);
-    expect(sink).toHaveBeenCalledTimes(1);
-    expect(sink).toHaveBeenCalledWith({ schemaVersion: 1, scope: 'app-shell', event });
-  },
-);
+  expect(emitDiagnostic(event, sink)).toBe(true);
+  expect(sink).toHaveBeenCalledTimes(1);
+  expect(sink).toHaveBeenCalledWith({ schemaVersion: 1, scope: 'app-shell', event });
+});
 
 test('uses the local console without an external diagnostics service', () => {
   const write = jest.spyOn(console, 'info').mockImplementation(() => undefined);
