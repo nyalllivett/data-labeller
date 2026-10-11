@@ -11,6 +11,6 @@ Pod::Spec.new do |s|
   s.source = { :git => 'https://github.com/nyalllivett/data-labeller.git' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
-  s.source_files = '**/*.{h,m,mm,swift}'
+  s.source_files = 'PrivateStorageModule.swift', 'Policy/*.swift'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'SWIFT_COMPILATION_MODE' => 'wholemodule' }
 end

@@ -97,7 +97,10 @@ export class ProjectStore {
   };
 
   retry = (operation: ProjectOperation | null = this.state.attempted): Promise<boolean> => {
-    if (this.state.discarding) return this.discard(this.state.discarding);
+    if (this.state.discarding) {
+      if (operation && operation.id !== this.state.discarding) return Promise.resolve(false);
+      return this.discard(this.state.discarding);
+    }
     if (!operation) return this.load();
     return this.perform('saving', () => {
       this.update({ ...this.state, attempted: operation });
@@ -105,9 +108,12 @@ export class ProjectStore {
     });
   };
 
-  discard = (operationId: string): Promise<boolean> =>
-    this.perform('saving', () => {
+  discard = (operationId: string): Promise<boolean> => {
+    // Preserve an unconfirmed discard until its own outcome is known.
+    if (this.state.discarding && this.state.discarding !== operationId) return Promise.resolve(false);
+    return this.perform('saving', () => {
       this.update({ ...this.state, discarding: operationId });
       return this.repository.discard(operationId);
     });
+  };
 }

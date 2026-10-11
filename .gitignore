@@ -2,6 +2,10 @@ node_modules/
 .expo/
 dist/
 coverage/
+/modules/private-storage/.build/
+/modules/private-storage/.swiftpm/
+/modules/private-storage/android/build/
+/modules/private-storage/android/.gradle/
 /ios/
 /android/
 *.tsbuildinfo

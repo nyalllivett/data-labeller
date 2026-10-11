@@ -6,11 +6,13 @@ Read `AGENTS.md`, this plan, and `product-spec.md` from the exact starting commi
 
 GPT-6 Astra owns architecture and independent review; GPT-6.1 Sol owns implementation. Review must check requirements, maintainability, errors/recovery, observability, unit tests, and any claimed verification. Later changes require refreshed checks and review where affected.
 
+Keep safeguards proportional: use the simplest correct design for credible user actions, device/storage failures and saved-data protection. Reviewers must explain the realistic trigger and impact that justify a safeguard. Avoid speculative hardening, defensive layers for extremely unlikely sequences and abstraction inflation. Simplify unjustified complexity safely with focused regression tests; unit tests remain mandatory and integration tests remain excluded.
+
 ## Current status
 
 - Project rules and V1 scope: established at `89974c5871b81c0ea673e9696f750afa8c352fd8`.
 - Slice A: independently reviewed at `a6acb30c3c74aa5b43b1e5fa9f70839db95b97ad` and merged by the parent as `967b7e6856fb3759e9565a4c0b3501a145f4c2d0` ([PR #2](https://github.com/nyalllivett/data-labeller/pull/2)).
-- Slice B: implemented on `0003-project-labels` for draft PR review; independent exact-commit review and authorized merge remain pending. See [slice B decisions and checks](slice-b.md). C–E remain unimplemented.
+- Slice B: implemented on `0003-project-labels` in [draft PR #3](https://github.com/nyalllivett/data-labeller/pull/3). Astra's review of `d161965d5cea075007e45bcbe52078a6b5ea4685` requested a multi-request discard guard and owned native policy unit test sources/targets; both are addressed for revised exact-commit review. Native unit execution remains toolchain/network-blocked, separately from deferred device QA; authorized merge remains pending. See [slice B decisions and checks](slice-b.md). C–E remain unimplemented.
 - Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
 - Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Project metadata persistence/reconciliation is implemented in B with controlled unit tests; native durability is unverified. Media promotion/reconciliation remains proposed for C.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
@@ -33,7 +35,7 @@ Implementation status: reviewed by GPT-6 Astra and merged by the parent in PR #2
 
 ### B. Project and label domain with local persistence
 
-Implementation status: project/label rules and screens, SQLite staging/commit/reconciliation, fixed exception reporting and private storage preparation delivered on `0003-project-labels`; draft review pending. Tests/checks and native verification limits are in [slice-b.md](slice-b.md#verification). Historical recording names will be snapshotted by C alongside stable label IDs; B does not implement recording.
+Implementation status: project/label rules and screens, SQLite staging/commit/reconciliation, fixed exception reporting and private storage preparation delivered on `0003-project-labels`; review fixes include multi-request discard recovery guards and native policy unit sources/targets. Revised review pending; native unit targets have not executed in this cloud. Tests/checks and native verification limits are in [slice-b.md](slice-b.md#verification). Historical recording names will be snapshotted by C alongside stable label IDs; B does not implement recording.
 
 - Implement project creation and custom label management with thin screens and testable domain behavior.
 - Decide validation and identifier/rename behavior required by this slice.
@@ -90,5 +92,6 @@ Manual device validation is separate from the unit suite. Do not add integration
 - Independent review findings and resolution status for that exact revision.
 - Native/device behavior actually checked, or a clear statement of what remains unverified.
 - Data safety, error/recovery, and diagnostics covered; blockers and the smallest next step.
+- Safeguards justified by credible failures and their impact, including any safe simplifications made to keep the design proportionate.
 
 Documentation-only work reports consistency/link/diff checks instead of claiming application tests were run. Keep this plan current as slices are reviewed and merged.

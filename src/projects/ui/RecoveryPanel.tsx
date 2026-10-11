@@ -58,58 +58,66 @@ export function RecoveryPanel({
           }}
         />
       )}
-      {operations.map((operation) => (
-        <View key={operation.id} style={styles.row}>
-          <Text accessibilityRole="header" style={styles.heading}>
-            Submitted change: {operation.project.name}
-          </Text>
-          {operation.project.labels.map((label) => (
-            <Text key={label.id} style={styles.text}>
-              {label.name}
-              {label.archived ? ' (archived)' : ''}
+      {state.discarding && (
+        <Text style={styles.text}>
+          Finish retrying the unconfirmed discard before acting on another submitted change.
+        </Text>
+      )}
+      {operations.map((operation) => {
+        const actionDisabled = disabled || (!!state.discarding && state.discarding !== operation.id);
+        return (
+          <View key={operation.id} style={styles.row}>
+            <Text accessibilityRole="header" style={styles.heading}>
+              Submitted change: {operation.project.name}
             </Text>
-          ))}
-          <Text style={styles.text}>
-            Retry uses the same request. Discard removes only this pending request.
-          </Text>
-          <Button
-            title={state.discarding === operation.id ? 'Retry discard' : 'Retry submitted change'}
-            disabled={disabled}
-            onPress={() => {
-              void retry(operation);
-            }}
-          />
-          {state.discarding === operation.id ? (
+            {operation.project.labels.map((label) => (
+              <Text key={label.id} style={styles.text}>
+                {label.name}
+                {label.archived ? ' (archived)' : ''}
+              </Text>
+            ))}
             <Text style={styles.text}>
-              Discard could not be confirmed. Retry discard; saved projects are retained.
+              Retry uses the same request. Discard removes only this pending request.
             </Text>
-          ) : confirm === operation.id ? (
-            <>
-              <Text style={styles.text}>Discard this submitted change?</Text>
-              <Button
-                title="Keep submitted change"
-                disabled={disabled}
-                onPress={() => setConfirm(null)}
-              />
-              <Button
-                title="Confirm discard"
-                disabled={disabled}
-                onPress={() => {
-                  void discard(operation.id).then((ok) => {
-                    if (ok) setConfirm(null);
-                  });
-                }}
-              />
-            </>
-          ) : (
             <Button
-              title="Discard submitted change"
-              disabled={disabled}
-              onPress={() => setConfirm(operation.id)}
+              title={state.discarding === operation.id ? 'Retry discard' : 'Retry submitted change'}
+              disabled={actionDisabled}
+              onPress={() => {
+                void retry(operation);
+              }}
             />
-          )}
-        </View>
-      ))}
+            {state.discarding === operation.id ? (
+              <Text style={styles.text}>
+                Discard could not be confirmed. Retry discard; saved projects are retained.
+              </Text>
+            ) : confirm === operation.id ? (
+              <>
+                <Text style={styles.text}>Discard this submitted change?</Text>
+                <Button
+                  title="Keep submitted change"
+                  disabled={actionDisabled}
+                  onPress={() => setConfirm(null)}
+                />
+                <Button
+                  title="Confirm discard"
+                  disabled={actionDisabled}
+                  onPress={() => {
+                    void discard(operation.id).then((ok) => {
+                      if (ok) setConfirm(null);
+                    });
+                  }}
+                />
+              </>
+            ) : (
+              <Button
+                title="Discard submitted change"
+                disabled={actionDisabled}
+                onPress={() => setConfirm(operation.id)}
+              />
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }

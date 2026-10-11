@@ -36,7 +36,7 @@ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npx expo config --type introspect --json
 
 The bundle check exports iOS and Android JavaScript/Hermes bytecode into ignored `dist/`; it does not publish anything. Prebuild generates ignored native projects without installing Pods, compiling, signing or launching a device. Native directories are generated from app configuration and dependencies; keep persistent customizations in config/plugins rather than editing generated files.
 
-The unit suite uses controlled native doubles. It checks project/name/label rules, stable IDs, archive/restore, UI behavior, loading/save/failure states, staged operations, transactional rollback, ambiguous completion, same-request retry, relaunch reconciliation, conflicts, corruption, schema guards, native-preparation coordination and exception sanitization. No integration suite is included. Types check application and test files under strict settings; lint rejects warnings.
+The JavaScript unit suite uses controlled native doubles. It checks project/name/label rules, stable IDs, archive/restore, UI behavior, loading/save/failure states, staged operations, transactional rollback, ambiguous completion, same-request retry, relaunch reconciliation, conflicts, corruption, schema guards, native-preparation coordination and exception sanitization. An unconfirmed discard locks the other pending requests until its outcome is confirmed, including confirmations already opened. No integration suite is included. Types check application and test files under strict settings; lint rejects warnings.
 
 In this sandbox, npm's default home cache is not writable. Prefix npm/npx commands with `npm_config_cache=/tmp/data-labeller-npm`, or export that variable. Expo's online compatibility lookup is blocked by the proxy; offline checks use the version table shipped with the installed SDK and explicitly warn that online validation is unavailable. See [slice B verification](docs/slice-b.md#verification) for exact outcomes and limitations.
 
@@ -49,6 +49,17 @@ EXPO_NO_TELEMETRY=1 CI=1 npx --yes expo-doctor@1.20.4
 ```
 
 The local `PrivateStorage` Expo module must be included in a rebuilt development client. The old slice A client cannot open the new workspace. Storage preparation verifies iOS backup exclusion or selects Android's no-backup directory before SQLite opens; failure blocks opening and offers Retry. Mocked tests/autolinking do not establish actual filesystem, SQLite, backup or device-transfer behavior. Do not uninstall to resolve a storage error: the local-only database has no cloud recovery copy.
+
+The native policy helpers also have controlled-filesystem unit test sources: a Foundation-only Swift Package XCTest target (macOS with Swift 5.9+) and an Android local JVM/JUnit target. Both target the same helper sources used by the Expo module. On suitable hosts, from the repository root:
+
+```sh
+swift test --package-path modules/private-storage
+# After the documented Android prebuild, with the Android SDK/JDK installed:
+cd android
+./gradlew :private-storage:testDebugUnitTest
+```
+
+These targets require no device, emulator or signing. They have **not run in this cloud environment**: Swift is absent; Android's Gradle wrapper cannot resolve `services.gradle.org`, and the Android SDK/Kotlin toolchain is absent. The JUnit test dependency is declared, with resolution unverified. Test sources cover creation/existing directories, verification, missing context, backup-exclusion failures and fixed error normalization; their execution is a separate outstanding check from deferred device QA. See [native test details](docs/slice-b.md#native-policy-unit-targets).
 
 Names are trimmed Unicode strings without control characters, with no fixed length/count caps. Duplicate names are allowed and identifiers remain stable. Archiving retains labels; restoring reuses the ID. Submitted saves use one immutable request ID for retry, and conflicts preserve the saved revision and pending change. Unsaved typing and a submission that never staged cannot survive process death. “Saved locally” appears only after the repository confirms commit and reloads the committed metadata; no recording/media Saved state exists yet.
 

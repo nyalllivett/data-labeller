@@ -131,6 +131,38 @@ test('an unconfirmed discard stays a discard across retry/remount, never resurre
   expect(store.getSnapshot().discarding).toBeNull();
 });
 
+test('two pending requests cannot replace an unconfirmed discard, including across load retries', async () => {
+  const { repository, store } = setup();
+  const a = { id: id(2), expectedRevision: 0, project: createProject(id(1), 'A') };
+  const b = { id: id(4), expectedRevision: 0, project: createProject(id(3), 'B') };
+  repository.load.mockResolvedValueOnce({ projects: [], pending: [a, b] });
+  await store.load();
+  repository.discard
+    .mockRejectedValueOnce(new StorageError('unavailable'))
+    .mockRejectedValueOnce(new StorageError('unavailable'))
+    .mockRejectedValueOnce(new StorageError('unavailable'))
+    .mockResolvedValueOnce({ projects: [], pending: [b] });
+  expect(await store.discard(a.id)).toBe(false);
+  const unconfirmed = store.getSnapshot();
+  expect(await store.discard(b.id)).toBe(false);
+  expect(await store.retry(b)).toBe(false);
+  expect(await store.submit(b.project, 0)).toBe(false);
+  expect(store.getSnapshot()).toBe(unconfirmed);
+  expect(repository.discard).toHaveBeenCalledTimes(1);
+  expect(repository.save).not.toHaveBeenCalled();
+
+  expect(await store.load()).toBe(false);
+  expect(store.getSnapshot()).toMatchObject({ discarding: a.id, pending: [a, b] });
+  expect(await store.retry(a)).toBe(false);
+  expect(await store.retry(null)).toBe(true);
+  expect(repository.discard.mock.calls).toEqual([[a.id], [a.id], [a.id], [a.id]]);
+  expect(repository.load).toHaveBeenCalledTimes(1);
+  expect(store.getSnapshot()).toMatchObject({ discarding: null, pending: [b], status: 'ready' });
+  expect(await store.discard(b.id)).toBe(true);
+  expect(repository.discard).toHaveBeenLastCalledWith(b.id);
+  expect(store.getSnapshot().pending).toEqual([]);
+});
+
 test.each<[StorageErrorCode, string]>([
   ['unavailable', 'storage.unavailable'],
   ['corrupt', 'storage.corrupt'],
