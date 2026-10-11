@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Data Labeller",
+    "slug": "data-labeller",
+    "version": "0.1.0",
+    "scheme": "data-labeller",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.nyalllivett.datalabeller",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nyalllivett.datalabeller",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Data Labeller to record video using your camera.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
+        "expo-video",
+        { "supportsBackgroundPlayback": false, "supportsPictureInPicture": false }
+      ]
+    ]
+  }
+}

@@ -8,9 +8,10 @@ GPT-6 Astra owns architecture and independent review; GPT-6.1 Sol owns implement
 
 ## Current status
 
-- Project rules and V1 scope: documentation in preparation/review.
-- Application implementation: not started; no build/test environment or app scaffold has been established for this job.
-- Native SDK/timing feasibility: not yet verified.
+- Project rules and V1 scope: established at `89974c5871b81c0ea673e9696f750afa8c352fd8`.
+- Slice A: implemented on `0002-app-scaffold` for draft PR review; independent final-commit review and merge remain pending. See [slice A decision and verification](slice-a.md); exact final SHA and PR link are in the job handoff. Later slices B–E are not implemented.
+- Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
+- Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Storage/reconciliation is a proposed protocol, not implemented durability.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
 
 ## Planned slices
@@ -18,6 +19,8 @@ GPT-6 Astra owns architecture and independent review; GPT-6.1 Sol owns implement
 The first usable flow is: create project and labels, capture and toggle, review and correct, then export video and annotations. Deliver it through the following small branches rather than one large implementation. Branch numbers are allocated from actual repository history at job start.
 
 ### A. Scaffold and timing/architecture investigation
+
+Implementation status: slice A scaffold and investigation delivered; architecture advice provided by GPT-6 Astra. Independent review of the exact final SHA and authorized merge are still required. Unit/type/lint and non-device verification are recorded in [slice-a.md](slice-a.md#verification). No native compilation or device acceptance is claimed.
 
 - Verify current React Native/TypeScript/Expo development-build compatibility and native camera/playback APIs from official sources and the chosen environment.
 - Identify the actual media-clock access or measured mapping needed for annotation times. Document evidence, assumptions, and unresolved native/device questions; do not make a frame-accuracy claim.
