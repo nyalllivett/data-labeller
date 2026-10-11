@@ -14,7 +14,7 @@ Every change is made and committed on a numbered branch, independently reviewed,
 
 ## Current state
 
-Slice A establishes a React Native/TypeScript/Expo development-build scaffold with a welcome screen, retryable render-error handling and local structured diagnostics. Projects, labels, capture, editing/Undo and export are not implemented yet. See the [architecture, timing and recovery decision](docs/slice-a.md) for installed SDK evidence, proposed adapters and remaining feasibility questions.
+Slice A is merged. Slice B adds project creation/rename and custom label add/rename/archive/restore with local SQLite metadata, recoverable save/retry states and submitted-change reconciliation. Recording, video review, annotation editing/Undo and export remain later slices. See the [slice B decisions and verification](docs/slice-b.md) and the [timing/media recovery investigation](docs/slice-a.md).
 
 The baseline is Expo `57.0.27`, React Native `0.86.3`, React `19.2.3` and TypeScript `6.0.3`. The lockfile records exact installed versions. Camera/playback dependencies and native plugins are present for subsequent slices; this shell does not invoke them or request permissions. No backend, authentication, analytics uploader, cloud-build project or paid service is configured.
 
@@ -36,9 +36,23 @@ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npx expo config --type introspect --json
 
 The bundle check exports iOS and Android JavaScript/Hermes bytecode into ignored `dist/`; it does not publish anything. Prebuild generates ignored native projects without installing Pods, compiling, signing or launching a device. Native directories are generated from app configuration and dependencies; keep persistent customizations in config/plugins rather than editing generated files.
 
-The unit suite uses controlled native doubles from Jest Expo and safe-area context. It covers welcome content, app error-boundary wiring, render/lifecycle failure, successful remount, repeated retry and privacy-safe diagnostics including a broken sink. No integration suite is included. Types check application and test files under strict settings; lint rejects warnings.
+The unit suite uses controlled native doubles. It checks project/name/label rules, stable IDs, archive/restore, UI behavior, loading/save/failure states, staged operations, transactional rollback, ambiguous completion, same-request retry, relaunch reconciliation, conflicts, corruption, schema guards, native-preparation coordination and exception sanitization. No integration suite is included. Types check application and test files under strict settings; lint rejects warnings.
 
-In this sandbox, npm's default home cache is not writable. Prefix npm/npx commands with `npm_config_cache=/tmp/data-labeller-npm`, or export that variable. Expo's online compatibility lookup is blocked by the proxy; offline checks use the version table shipped with the installed SDK and explicitly warn that online validation is unavailable. See [slice A verification](docs/slice-a.md#verification) for exact outcomes and limitations.
+In this sandbox, npm's default home cache is not writable. Prefix npm/npx commands with `npm_config_cache=/tmp/data-labeller-npm`, or export that variable. Expo's online compatibility lookup is blocked by the proxy; offline checks use the version table shipped with the installed SDK and explicitly warn that online validation is unavailable. See [slice B verification](docs/slice-b.md#verification) for exact outcomes and limitations.
+
+For additional native registration/configuration checks without compiling or launching a device:
+
+```sh
+npx expo-modules-autolinking resolve --platform apple --json
+npx expo-modules-autolinking resolve --platform android --json
+EXPO_NO_TELEMETRY=1 CI=1 npx --yes expo-doctor@1.20.4
+```
+
+The local `PrivateStorage` Expo module must be included in a rebuilt development client. The old slice A client cannot open the new workspace. Storage preparation verifies iOS backup exclusion or selects Android's no-backup directory before SQLite opens; failure blocks opening and offers Retry. Mocked tests/autolinking do not establish actual filesystem, SQLite, backup or device-transfer behavior. Do not uninstall to resolve a storage error: the local-only database has no cloud recovery copy.
+
+Names are trimmed Unicode strings without control characters, with no fixed length/count caps. Duplicate names are allowed and identifiers remain stable. Archiving retains labels; restoring reuses the ID. Submitted saves use one immutable request ID for retry, and conflicts preserve the saved revision and pending change. Unsaved typing and a submission that never staged cannot survive process death. “Saved locally” appears only after the repository confirms commit and reloads the committed metadata; no recording/media Saved state exists yet.
+
+The startup privacy adapter sanitizes values routed through React Native's pinned exception manager before application import. Fixed local events include storage phase/failure codes. Direct console/native-originated reports, early startup exceptions and development tooling remain outside that bound; no remote uploader is configured. Preserve those limits when debugging with private data.
 
 ## Local development builds (later native checks)
 

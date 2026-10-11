@@ -34,8 +34,12 @@
       ],
       [
         "expo-video",
-        { "supportsBackgroundPlayback": false, "supportsPictureInPicture": false }
-      ]
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ],
+      "expo-sqlite"
     ]
   }
 }

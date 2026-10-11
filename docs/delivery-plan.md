@@ -9,7 +9,8 @@ GPT-6 Astra owns architecture and independent review; GPT-6.1 Sol owns implement
 ## Current status
 
 - Project rules and V1 scope: established at `89974c5871b81c0ea673e9696f750afa8c352fd8`.
-- Slice A: implemented on `0002-app-scaffold` for draft PR review; independent final-commit review and merge remain pending. See [slice A decision and verification](slice-a.md); exact final SHA and PR link are in the job handoff. Later slices B–E are not implemented.
+- Slice A: independently reviewed at `a6acb30c3c74aa5b43b1e5fa9f70839db95b97ad` and merged by the parent as `967b7e6856fb3759e9565a4c0b3501a145f4c2d0` ([PR #2](https://github.com/nyalllivett/data-labeller/pull/2)).
+- Slice B: implemented on `0003-project-labels` for draft PR review; independent exact-commit review and authorized merge remain pending. See [slice B decisions and checks](slice-b.md). C–E remain unimplemented.
 - Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
 - Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Storage/reconciliation is a proposed protocol, not implemented durability.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
@@ -20,7 +21,7 @@ The first usable flow is: create project and labels, capture and toggle, review 
 
 ### A. Scaffold and timing/architecture investigation
 
-Implementation status: slice A scaffold and investigation delivered; architecture advice provided by GPT-6 Astra. Independent review of the exact final SHA and authorized merge are still required. Unit/type/lint and non-device verification are recorded in [slice-a.md](slice-a.md#verification). No native compilation or device acceptance is claimed.
+Implementation status: reviewed by GPT-6 Astra and merged by the parent in PR #2. Unit/type/lint and non-device verification are recorded in [slice-a.md](slice-a.md#verification). No native compilation or device acceptance is claimed.
 
 - Verify current React Native/TypeScript/Expo development-build compatibility and native camera/playback APIs from official sources and the chosen environment.
 - Identify the actual media-clock access or measured mapping needed for annotation times. Document evidence, assumptions, and unresolved native/device questions; do not make a frame-accuracy claim.
@@ -31,6 +32,8 @@ Implementation status: slice A scaffold and investigation delivered; architectur
 - Acceptance: a reproducible scaffold and meaningful tests/checks; a reviewed architecture/timing decision with explicit verification limits. No device test is required for this development slice's merge.
 
 ### B. Project and label domain with local persistence
+
+Implementation status: project/label rules and screens, SQLite staging/commit/reconciliation, fixed exception reporting and private storage preparation delivered on `0003-project-labels`; draft review pending. Tests/checks and native verification limits are in [slice-b.md](slice-b.md#verification). Historical recording names will be snapshotted by C alongside stable label IDs; B does not implement recording.
 
 - Implement project creation and custom label management with thin screens and testable domain behavior.
 - Decide validation and identifier/rename behavior required by this slice.

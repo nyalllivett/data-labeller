@@ -2,8 +2,8 @@ node_modules/
 .expo/
 dist/
 coverage/
-ios/
-android/
+/ios/
+/android/
 *.tsbuildinfo
 .env*
 *.jks

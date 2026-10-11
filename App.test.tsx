@@ -1,40 +1,35 @@
 import { render, screen, userEvent } from '@testing-library/react-native';
-
+import { Text } from 'react-native';
 import App from './App';
-import * as welcome from './src/shell/WelcomeScreen';
+import * as workspace from './src/projects/ui/ProjectWorkspace';
+import { newId, projectStore } from './src/projects/runtime';
 
-test('opens the local workspace preview with honest feature availability', async () => {
-  await render(<App />);
-
-  expect(screen.getByRole('header', { name: 'Data Labeller' })).toBeVisible();
-  expect(screen.getByText('Video with your own labels.')).toBeVisible();
-  expect(
-    screen.getByText('A local workspace for recording, reviewing and exporting labelled video.'),
-  ).toBeVisible();
-  expect(screen.getByRole('header', { name: 'Development preview' })).toBeVisible();
-  expect(screen.getByText('Project creation and recording are coming next.')).toBeVisible();
-  expect(screen.queryByRole('button')).not.toBeOnTheScreen();
-  expect(screen.queryByText("We couldn't show this screen")).not.toBeOnTheScreen();
+jest.mock('./src/projects/runtime', () => ({ newId: jest.fn(), projectStore: {} }));
+jest.mock('./src/projects/ui/ProjectWorkspace', () => {
+  const { Text } = jest.requireActual('react-native');
+  return { ProjectWorkspace: jest.fn(() => <Text>Project workspace</Text>) };
 });
-
-test('the mounted app catches screen failure and permits a fresh render', async () => {
+test('mounts the workspace with a stable store and native ID factory', async () => {
+  await render(<App />);
+  expect(screen.getByText('Project workspace')).toBeVisible();
+  expect(workspace.ProjectWorkspace).toHaveBeenCalledWith(
+    { store: projectStore, newId },
+    undefined,
+  );
+});
+test('catches screen failure and permits a fresh render', async () => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
   const diagnostics = jest.spyOn(console, 'info').mockImplementation(() => undefined);
-  const renderWelcome = welcome.WelcomeScreen;
   let shouldFail = true;
-  jest.spyOn(welcome, 'WelcomeScreen').mockImplementation(() => {
+  jest.spyOn(workspace, 'ProjectWorkspace').mockImplementation(() => {
     if (shouldFail) throw new Error('private user text');
-    return renderWelcome();
+    return <Text>Project workspace</Text>;
   });
-
   await render(<App />);
   expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
-  expect(screen.queryByRole('header', { name: 'Data Labeller' })).not.toBeOnTheScreen();
   shouldFail = false;
   await userEvent.setup().press(screen.getByRole('button', { name: 'Try again' }));
-
-  expect(screen.getByRole('header', { name: 'Data Labeller' })).toBeVisible();
-  expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeOnTheScreen();
+  expect(screen.getByText('Project workspace')).toBeVisible();
   expect(diagnostics.mock.calls).toEqual([
     [{ schemaVersion: 1, scope: 'app-shell', event: 'render.failed' }],
     [{ schemaVersion: 1, scope: 'app-shell', event: 'render.retry_requested' }],
