@@ -12,7 +12,7 @@ GPT-6 Astra owns architecture and independent review; GPT-6.1 Sol owns implement
 - Slice A: independently reviewed at `a6acb30c3c74aa5b43b1e5fa9f70839db95b97ad` and merged by the parent as `967b7e6856fb3759e9565a4c0b3501a145f4c2d0` ([PR #2](https://github.com/nyalllivett/data-labeller/pull/2)).
 - Slice B: implemented on `0003-project-labels` for draft PR review; independent exact-commit review and authorized merge remain pending. See [slice B decisions and checks](slice-b.md). C–E remain unimplemented.
 - Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
-- Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Storage/reconciliation is a proposed protocol, not implemented durability.
+- Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Project metadata persistence/reconciliation is implemented in B with controlled unit tests; native durability is unverified. Media promotion/reconciliation remains proposed for C.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
 
 ## Planned slices
