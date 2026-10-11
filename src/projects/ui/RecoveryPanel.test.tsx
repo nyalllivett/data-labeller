@@ -100,3 +100,20 @@ test('distinguishes an unconfirmed discard from a request to save the same draft
   await userEvent.setup().press(screen.getByRole('button', { name: 'Retry discard' }));
   expect(retry).toHaveBeenCalledWith(op);
 });
+
+test('pending active labels are shown without an archived marker', async () => {
+  const project = {
+    ...createProject(id(1), 'P'),
+    labels: [{ id: id(3), name: 'Active label', archived: false }],
+  };
+  const operation = { id: id(2), expectedRevision: 0, project };
+  await render(
+    <RecoveryPanel
+      state={{ ...state, pending: [operation] }}
+      retry={jest.fn()}
+      discard={jest.fn()}
+    />,
+  );
+  expect(screen.getByText('Active label')).toBeVisible();
+  expect(screen.queryByText('Active label (archived)')).not.toBeOnTheScreen();
+});

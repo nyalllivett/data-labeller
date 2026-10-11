@@ -2,8 +2,25 @@ import { act, fireEvent, render, screen, userEvent } from '@testing-library/reac
 import { NameEditor } from './NameEditor';
 import { ProjectError } from '../project';
 
+const mockNativePressHandlers = new Map<string, () => void>();
+jest.mock('react-native', () => {
+  const actual = jest.requireActual('react-native');
+  // Copy descriptors rather than eagerly evaluating unrelated native getters.
+  const descriptors = Object.getOwnPropertyDescriptors(actual);
+  descriptors.Button = {
+    enumerable: true,
+    configurable: true,
+    value: (props: { title: string; onPress(): void; disabled?: boolean }) => {
+      mockNativePressHandlers.set(props.title, props.onPress);
+      return <actual.Button {...props} />;
+    },
+  };
+  return Object.defineProperties({}, descriptors);
+});
+
 beforeEach(() => {
   jest.useFakeTimers();
+  mockNativePressHandlers.clear();
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -78,6 +95,13 @@ test('guards repeated/locked actions and does not notify a parent after unmount 
   const view = await render(<NameEditor {...props} locked />);
   const user = userEvent.setup();
   expect(screen.getByRole('button', { name: 'Save name' })).toBeDisabled();
+  // Model a native callback delivered while the rendered control is locked.
+  // Invoke the public Button callback; do not reach into editor state.
+  const queuedPress = mockNativePressHandlers.get('Save name');
+  expect(queuedPress).toBeDefined();
+  await act(async () => {
+    queuedPress!();
+  });
   await user.press(screen.getByRole('button', { name: 'Save name' }));
   expect(save).not.toHaveBeenCalled();
   await view.rerender(<NameEditor {...props} locked={false} />);
@@ -90,4 +114,31 @@ test('guards repeated/locked actions and does not notify a parent after unmount 
     resolve(true);
   });
   expect(saved).not.toHaveBeenCalled();
+});
+
+test('handles a late rejected save after unmount without logging raw data or notifying its parent', async () => {
+  let reject!: (error: Error) => void;
+  const save = jest.fn(
+    () =>
+      new Promise<boolean>((_resolve, fail) => {
+        reject = fail;
+      }),
+  );
+  const saved = jest.fn();
+  const log = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  const view = await render(
+    <NameEditor
+      edit={{ title: 'New project', initialName: 'Draft', save }}
+      locked={false}
+      onSaved={saved}
+      onCancel={jest.fn()}
+    />,
+  );
+  await userEvent.setup().press(screen.getByRole('button', { name: 'Save name' }));
+  await view.unmount();
+  await act(async () => {
+    reject(new Error('PRIVATE failure'));
+  });
+  expect(saved).not.toHaveBeenCalled();
+  expect(log).not.toHaveBeenCalled();
 });

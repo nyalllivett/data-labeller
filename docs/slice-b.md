@@ -39,7 +39,7 @@ Cloud commands use Node `24.19.0` / npm `11.9.0` and `npm_config_cache=/tmp/data
 | Status | Command | Result |
 | --- | --- | --- |
 | Passed | `npm ci` | Fresh lockfile installation, 981 packages; no peer overrides |
-| Passed | `npm run check` | 13 unit suites / 88 tests, strict types, zero-warning lint |
+| Passed | `npm run check` | 13 unit suites / 90 tests, strict types, zero-warning lint |
 | Passed | `npm run test:coverage` | Behavioral assertions plus coverage report; no skips/snapshots |
 | Passed with offline limit | `npx expo install --check` | Matches installed Expo SDK table; online validation unavailable |
 | Passed | `npm run bundle:check` | iOS and Android Hermes exports inspected locally |
