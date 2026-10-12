@@ -8,7 +8,9 @@ import { createNativeMedia } from './nativeMedia';
 import { SqliteRecordingRepository } from './SqliteRecordingRepository';
 
 export const camera = new NativeCamera(Platform.OS === 'ios' ? 'avcapture-recorded-duration' : 'camerax-recording-stats');
+export const media = createNativeMedia();
+export const recordingRepository = new SqliteRecordingRepository(privateDatabaseOpener('recordings.db'));
 export const captureStore = new CaptureStore(
-  camera, createNativeMedia(), new SqliteRecordingRepository(privateDatabaseOpener('recordings.db')),
+  camera, media, recordingRepository,
   newId, Platform.OS === 'ios' ? 'mov' : 'mp4',
 );

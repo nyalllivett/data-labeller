@@ -110,7 +110,7 @@ export function CaptureScreen({ store, camera, permissions = cameraPermissions }
           ))}
           {['saved', 'failed'].includes(state.phase) && state.draft && <Button title="New recording (keep pending data)" disabled={!store.canClose()} onPress={store.newRecording} />}
           {state.phase === 'unfinalized' && state.error === 'checkpoint-failed' && <Button title="Retry pending annotation save" onPress={() => { void store.checkpointUnfinalized(); }} />}
-          <Text style={styles.note}>Video review, annotation correction and export are coming in later slices.</Text>
+          <Text style={styles.note}>Review and correct saved recordings from the project screen. Export is coming in slice E.</Text>
         </ScrollView>
       )}
       <View style={styles.footer}>

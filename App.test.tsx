@@ -7,6 +7,18 @@ import { camera, captureStore } from './src/capture/runtime';
 import * as capture from './src/capture/ui/CaptureScreen';
 import { createProject } from './src/projects/project';
 import { id } from './test/ids';
+import { reviewStore } from './src/review/runtime';
+
+let mockReviewChanged: () => void;
+jest.mock('./src/review/runtime', () => ({ reviewStore: {
+  getSnapshot: jest.fn().mockReturnValue({ project: null }),
+  subscribe: jest.fn((changed) => { mockReviewChanged = changed; return () => undefined; }),
+  open: jest.fn(),
+} }));
+jest.mock('./src/review/ui/ReviewScreen', () => {
+  const { Text } = jest.requireActual('react-native');
+  return { ReviewScreen: jest.fn(() => <Text>Review screen</Text>) };
+});
 
 let mockCaptureChanged: () => void;
 jest.mock('./src/capture/runtime', () => ({
@@ -21,7 +33,10 @@ jest.mock('./src/capture/ui/CaptureScreen', () => {
   const { Text } = jest.requireActual('react-native');
   return { CaptureScreen: jest.fn(() => <Text>Capture screen</Text>) };
 });
-beforeEach(() => { jest.mocked(captureStore.getSnapshot).mockReturnValue({ ...captureStore.getSnapshot(), project: null }); });
+beforeEach(() => {
+  jest.mocked(captureStore.getSnapshot).mockReturnValue({ ...captureStore.getSnapshot(), project: null });
+  jest.mocked(reviewStore.getSnapshot).mockReturnValue({ ...reviewStore.getSnapshot(), project: null });
+});
 
 jest.mock('./src/projects/runtime', () => ({ newId: jest.fn(), projectStore: {} }));
 jest.mock('./src/projects/ui/ProjectWorkspace', () => {
@@ -32,7 +47,7 @@ test('mounts the workspace with a stable store and native ID factory', async () 
   await render(<App />);
   expect(screen.getByText('Project workspace')).toBeVisible();
   expect(workspace.ProjectWorkspace).toHaveBeenCalledWith(
-    { store: projectStore, newId, onCapture: expect.any(Function) },
+    { store: projectStore, newId, onCapture: expect.any(Function), onReview: expect.any(Function) },
     undefined,
   );
 });
@@ -66,4 +81,16 @@ test('catches screen failure and permits a fresh render', async () => {
     [{ schemaVersion: 1, scope: 'app-shell', event: 'render.failed' }],
     [{ schemaVersion: 1, scope: 'app-shell', event: 'render.retry_requested' }],
   ]);
+});
+
+test('opens saved review from the workspace in the stable editor boundary', async () => {
+  await render(<App />);
+  const project = createProject(id(1), 'P');
+  jest.mocked(workspace.ProjectWorkspace).mock.calls[0]![0].onReview(project);
+  expect(reviewStore.open).toHaveBeenCalledWith(project);
+  await act(async () => {
+    jest.mocked(reviewStore.getSnapshot).mockReturnValue({ ...reviewStore.getSnapshot(), project });
+    mockReviewChanged();
+  });
+  expect(screen.getByText('Review screen')).toBeVisible();
 });

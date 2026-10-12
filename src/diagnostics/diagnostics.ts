@@ -5,6 +5,14 @@ export type DiagnosticEvent =
   | 'storage.saving'
   | 'storage.ready'
   | 'storage.failed';
+export type ReviewDiagnosticEvent =
+  | 'review.opened'
+  | 'review.changed'
+  | 'review.saving'
+  | 'review.saved'
+  | 'review.failed'
+  | 'review.playback_failed'
+  | 'review.position_unavailable';
 export type CaptureDiagnosticEvent =
   | 'capture.starting'
   | 'capture.recording'
@@ -27,7 +35,7 @@ export type StorageDiagnosticEvent =
 export type Diagnostic = Readonly<{
   schemaVersion: 1;
   scope: 'app-shell';
-  event: DiagnosticEvent | StorageDiagnosticEvent | CaptureDiagnosticEvent;
+  event: DiagnosticEvent | StorageDiagnosticEvent | CaptureDiagnosticEvent | ReviewDiagnosticEvent;
 }>;
 
 export type DiagnosticSink = (diagnostic: Diagnostic) => void;
@@ -36,7 +44,7 @@ const consoleSink: DiagnosticSink = (diagnostic) => console.info(diagnostic);
 
 // Only fixed event codes enter diagnostics. Never pass exception/user payloads.
 export function emitDiagnostic(
-  event: DiagnosticEvent | StorageDiagnosticEvent | CaptureDiagnosticEvent,
+  event: DiagnosticEvent | StorageDiagnosticEvent | CaptureDiagnosticEvent | ReviewDiagnosticEvent,
   sink: DiagnosticSink = consoleSink,
 ): boolean {
   try {

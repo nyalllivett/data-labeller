@@ -4,10 +4,11 @@ import { Directory, File } from 'expo-file-system';
 import { validateId } from '../projects/project';
 import { CaptureError } from './CaptureError';
 import type { MediaFiles } from './MediaFiles';
-import type { RecordingDraft } from './recording';
+import type { RecordingDraft, SavedRecording } from './recording';
 
 export type MediaFile = Pick<File, 'uri' | 'exists' | 'size'> & { rename(name: string): void | Promise<void> };
 export type MediaDirectory = Pick<Directory, 'uri'> & { create(): void | Promise<void> };
+export type NativeMedia = MediaFiles & { resolveSaved(record: SavedRecording): Promise<string> };
 
 export function createNativeMedia(
   preparePrivate: () => Promise<string> = () => requireNativeModule<{ prepareDatabaseDirectory(): Promise<string> }>('PrivateStorage').prepareDatabaseDirectory(),
@@ -29,16 +30,23 @@ export function createNativeMedia(
     };
   },
   inspect: (uri: string) => Promise<number> = (uri) => requireNativeModule<{ inspectVideo(uri: string): Promise<number> }>('CaptureMedia').inspectVideo(uri),
-): MediaFiles {
-  async function paths(draft: RecordingDraft) {
+): NativeMedia {
+  async function paths(draft: RecordingDraft, ensureDirectory = true) {
     validateId(draft.id);
     const base = await preparePrivate();
     if (!base.startsWith('file:///') || !['mov', 'mp4'].includes(draft.extension)) throw new CaptureError('media-unavailable');
     const media = directory(base);
-    await media.create();
+    if (ensureDirectory) await media.create();
     return { stage: file(media.uri, `${draft.id}.partial.${draft.extension}`), final: file(media.uri, `${draft.id}.${draft.extension}`) };
   }
   return {
+    async resolveSaved(record) {
+      try {
+        const { final } = await paths(record, false);
+        if (!final.exists || final.size !== record.byteSize) throw new CaptureError('media-unavailable');
+        return final.uri;
+      } catch { throw new CaptureError('media-unavailable'); }
+    },
     async prepare(draft) {
       try {
         const { stage, final } = await paths(draft);
