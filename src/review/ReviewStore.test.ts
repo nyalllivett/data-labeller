@@ -1,6 +1,6 @@
 import { deferred } from '../../test/captureFixture';
 import { id } from '../../test/ids';
-import { reviewFixture } from '../../test/reviewFixture';
+import { reviewFixture, savedRecord } from '../../test/reviewFixture';
 import { StorageError } from '../storage/StorageError';
 import { type Annotations, annotations } from './annotations';
 import { ReviewError } from './ReviewError';
@@ -95,4 +95,35 @@ test('reported playback actions are scoped to the selected recording and never u
   expect(f.store.getSnapshot().form?.start).toBe('0.25'); f.store.apply();
   expect(f.store.getSnapshot().document?.intervals[0]?.startMs).toBe(250);
   f.store.setPlayback(f.record.id, 300, false); expect(f.store.usePosition('end')).toBe(false);
+});
+test('Use playback preserves an exact fractional endpoint through Apply, relabelling, Save and Undo', async () => {
+  const f = reviewFixture(); const record = savedRecord(f.record.id, 254_000 / 30);
+  f.recordings.load.mockResolvedValueOnce({ pending: [], saved: [record] }); await f.open();
+  f.store.selectInterval(0); f.store.setPlayback(record.id, record.durationMs, true);
+  expect(f.store.usePosition('end')).toBe(true);
+  expect(f.store.getSnapshot().form?.end).toBe('8.466666666666667');
+  f.store.setField('labelId', id(3)); expect(f.store.apply()).toBe(true);
+  expect(f.store.getSnapshot().document?.intervals[0]?.endMs).toBe(record.durationMs);
+  expect(f.store.getSnapshot().error).toBeNull();
+  expect(await f.store.save()).toBe(true);
+  expect(f.documents.get(record.id)?.intervals[0]?.endMs).toBe(record.durationMs);
+  expect(f.store.undo()).toBe(true); expect(f.store.getSnapshot().document?.intervals[0]?.endMs).toBe(600);
+});
+test('manual boundary changes clear only that playback value; Reset clears it and unchanged reports remain no-ops', async () => {
+  const f = reviewFixture(); const record = savedRecord(f.record.id, 254_000 / 30);
+  f.recordings.load.mockResolvedValueOnce({ pending: [], saved: [record] }); await f.open(); f.store.selectInterval(0);
+  f.store.setPlayback(record.id, record.durationMs, true); f.store.usePosition('end');
+  f.store.setField('end', '8.466666666666667'); // Intentional manual text, even though display matches.
+  expect(f.store.apply()).toBe(false); expect(f.store.getSnapshot().error).toBe('invalid-interval');
+  f.store.usePosition('end'); f.store.setField('end', '8.4'); expect(f.store.apply()).toBe(true);
+  expect(f.store.getSnapshot().document?.intervals[0]?.endMs).toBe(8400);
+  f.store.setPlayback(record.id, record.durationMs, true); f.store.usePosition('start'); f.store.usePosition('end');
+  expect(f.store.apply()).toBe(true);
+  expect(f.store.getSnapshot().document?.intervals[0]).toMatchObject({ startMs: record.durationMs, endMs: record.durationMs });
+  f.store.usePosition('start'); f.store.usePosition('end'); expect(f.store.formDirty()).toBe(false);
+  const history = f.store.getSnapshot().history; expect(f.store.apply()).toBe(true); expect(f.store.getSnapshot().history).toBe(history);
+  f.store.setPlayback(record.id, 0, true); f.store.usePosition('start'); f.store.resetForm();
+  expect(f.store.formDirty()).toBe(false); expect(f.store.getSnapshot().form?.startPositionMs).toBeUndefined();
+  f.store.usePosition('start'); f.store.usePosition('end'); f.store.setField('end', '0.1'); expect(f.store.apply()).toBe(true);
+  expect(f.store.getSnapshot().document?.intervals[0]).toMatchObject({ startMs: 0, endMs: 100 });
 });

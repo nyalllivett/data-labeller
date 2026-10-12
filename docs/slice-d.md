@@ -8,11 +8,15 @@ Scope: saved-recording selection, local video above a zoomable common-scale per-
 
 Acceptance: meaningful deterministic units for domain validation, overlay persistence, Apply/Save/Undo and navigation/retry transitions, playback conversion/coordination and component behaviour. Required installation, full unit/type/lint/coverage, both bundles and config checks must match the final revision. Source inspection does not establish native playback/seek or physical alignment. Independent Astra review and the parent's merge decision remain separate.
 
+Precision review-fix job starts from clean `aff8ce3681af4e737d7a4b4be463e4d598e3f0d0` on the same `0005-review-editor` branch; fetched master remains `4af3e4f16a82ac176f158dd192c188ec79ff7978`. Read the required references at that exact starting revision. Scope is the independent Astra P2 finding: Use playback → seconds display → Apply reparsed a valid fractional endpoint just beyond captured duration. Keep manual input semantics and all timing/native limits; add focused regression units without clamping or a tolerance.
+
 ## Edit and save model
 
 A sidecar `annotations.db` stores the full effective interval document per recording. No row means the immutable capture baseline; a persisted empty list means all intervals were deleted. Database errors never fall back to original annotations. Each original interval's ordinal is its stable ID within that recording, retained through edits, deletion/Undo and relabelling; current sort/list indices are not identity.
 
 Apply validates an interval and accepts it into the in-memory document; Delete is another undoable document change. Bounds are finite `0 <= startMs <= endMs <= capturedDurationMs`, with known captured label IDs and unique interval IDs. Equal boundaries and overlaps remain valid; no snapping, minimum length or media/storage caps are introduced. Invalid/no-op edits add no history. Untouched field text preserves the exact stored doubles, including during relabelling. Changed seconds text shifts decimal units before a single numeric parse: entering `2.007` seconds at a 2007 ms endpoint does not introduce multiplication overshoot. This is unit conversion, not a tolerance or snap.
+
+Use playback stores its exact reported milliseconds alongside the displayed seconds in the edit form. Apply uses that numeric value directly. A manual edit clears only that boundary's reported value, even if the entered text matches its display; manual text then follows the existing parsing/validation rule. Relabelling retains both reported values. Reset/selection/Apply rebuild forms from committed or accepted bounds. Form cleanliness compares text and effective numeric intent, so filling an unchanged bound remains a no-op. This metadata is in-memory form state, not an annotation schema change.
 
 Save is explicit, updates the committed baseline/revision and retains session Undo history. Undo after Save creates unsaved changes. Switching recording clears history only when there are no accepted unsaved edits or unapplied form changes. Unapplied fields require Apply or Reset before Save/navigation/Undo. Session edits/Undo are not promised across process death; reopening uses the last committed overlay.
 
@@ -47,11 +51,13 @@ Failed reads, unsupported schemas, corrupt rows, conflicts and media/player fail
 
 Installation and checks ran in this cloud on Node `24.19.0` / npm `11.9.0`. Prefix npm/npx with `npm_config_cache=/tmp/data-labeller-npm`; offline Expo checks use `EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1`. Reproducible commands are in the README.
 
+The precision review fix reruns fresh installation, units/types/lint/coverage and both bundles. Generation/config/autolinking, offline compatibility and Doctor rows retain the initial D outcomes: those inputs are unchanged by this form-only fix and those commands were not repeated. Native/device limits are unchanged.
+
 | Status | Command/check | Outcome |
 | --- | --- | --- |
 | Passed | `npm ci` | Fresh 994-package install; pinned camera version check and patch succeed; lockfile unchanged |
-| Passed | `npm run check` | 33 JavaScript unit suites / 287 tests, strict types, zero-warning lint |
-| Passed | `npm run test:coverage` | Same 287 tests; 100% instrumented owned JS/TS statements/branches/functions/lines; no skips or snapshots |
+| Passed | `npm run check` | 33 JavaScript unit suites / 290 tests, strict types, zero-warning lint |
+| Passed | `npm run test:coverage` | Same 290 tests; 100% instrumented owned JS/TS statements/branches/functions/lines; no skips or snapshots |
 | Passed with offline limit | `npx expo install --check` | Installed SDK compatibility table matches; online validation unavailable |
 | Passed | `npm run bundle:check` | Local iOS and Android Hermes exports; no upload/publish |
 | Passed | `npm run prebuild -- --platform all` | Both ignored native projects generated without install, compilation, signing or launching |
@@ -65,10 +71,12 @@ Installation and checks ran in this cloud on Node `24.19.0` / npm `11.9.0`. Pref
 
 Deterministic units cover stable identity, immutable capture evidence, numeric bounds/conversion, overlaps/zero-length intervals, missing-versus-empty overlays, schema/read/migration failure, rollback and commit-before-rejection/idempotent retry. Store/component units cover Apply/Reset/Save/Undo including Undo after Save, unapplied-field/navigation guards, repeated actions, loading/failure/retry, record switching and incomplete/interrupted capture warnings. Controlled player units cover seconds conversion, readiness, seek request versus reported position, float overshoot/recovery, Pause after failure, listener cleanup/stale callbacks and retry without losing edit scope. Timeline units cover shared zoom/pan/window geometry, empty label tracks, overlapping selection, endpoint markers and playhead eligibility. These tests execute no real SQLite, camera, player or OS filesystem.
 
-Both final platform artifacts are present in ignored `dist/`: Android `index-879c2d546a0e92b0d7406390f89b90f5.hbc` and iOS `index-e22e630ba6623dfea992a0a82721e418.hbc` (about 1.8 MB each). They establish bundling only.
+The final local exports are referenced by ignored `dist/metadata.json`, with one iOS and one Android Hermes artifact (about 1.8 MB each). Generated filenames can change between exports; the manifest identifies the current artifacts. They establish bundling only.
 
 ## Review and remaining acceptance
 
 Implementation and cloud verification are complete on `0005-review-editor` in draft [PR #5](https://github.com/nyalllivett/data-labeller/pull/5); exact final SHA and remote verification are in the handoff/PR. GPT-6 Astra architecture advice informed the model and identified Pause/position eligibility and stale-seek issues; both are resolved with focused regression units. Advice is separate from the parent's pending independent exact-SHA review and merge decision. No known implementation findings remain from that advice.
+
+Independent Astra review of `aff8ce3681af4e737d7a4b4be463e4d598e3f0d0` found the P2 precision issue: a 254-frame/30-fps example has duration/position `8466.666666666666` ms; the displayed `8.466666666666667` seconds reparses as `8466.666666666668` ms and Apply rejects it. The focused store regression failed against that reviewed implementation before the fix. Store and component regressions now preserve the exact endpoint through Apply, relabelling, Save and Undo, and verify manual replacement, Reset, independent boundary values and no-op handling. The fix changes only form intent and conversion selection, with no new dependencies, native/config changes, clamping or tolerance. Final independent re-review and the parent's merge decision remain pending.
 
 Native player initialization/control/event delivery, decoding, actual seek behavior, visual/accessibility usability, filesystem/SQLite durability and camera-to-playback timing alignment remain unverified. No timing tolerance or storage cap is invented. Later iOS-first device acceptance must record exact commit/device/OS and agreed criteria. No paid API/mode, purchase/credit spend, billing change, signing, deployment or release occurred.

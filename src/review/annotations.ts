@@ -4,7 +4,8 @@ import { ReviewError } from './ReviewError';
 // Identity is the ordinal in the immutable capture list, scoped by recording.
 export type EditedInterval = Interval & Readonly<{ id: number }>;
 export type Annotations = Readonly<{ recordingId: string; revision: number; intervals: readonly EditedInterval[] }>;
-export type IntervalForm = Readonly<{ id: number; labelId: string; start: string; end: string }>;
+export type IntervalForm = Readonly<{ id: number; labelId: string; start: string; end: string;
+  startPositionMs?: number; endPositionMs?: number }>;
 
 export function annotations(record: SavedRecording, revision: number, intervals: readonly EditedInterval[]): Annotations {
   if (!Number.isSafeInteger(revision) || revision < 0 || !Array.isArray(intervals)) throw new ReviewError('invalid-interval');
@@ -57,8 +58,9 @@ export function intervalForm(interval: EditedInterval): IntervalForm {
 export function applyForm(record: SavedRecording, document: Annotations, form: IntervalForm): Annotations {
   const original = document.intervals.find((interval) => interval.id === form.id);
   if (!original) throw new ReviewError('invalid-interval');
-  // Preserve exact stored doubles when untouched text is applied/relabelled.
-  const startMs = form.start === secondsText(original.startMs) ? original.startMs : parseSeconds(form.start);
-  const endMs = form.end === secondsText(original.endMs) ? original.endMs : parseSeconds(form.end);
+  // Playback-filled fields retain the exact numeric report, not a text round trip.
+  // Otherwise preserve untouched stored doubles or parse intentional manual text.
+  const startMs = form.startPositionMs ?? (form.start === secondsText(original.startMs) ? original.startMs : parseSeconds(form.start));
+  const endMs = form.endPositionMs ?? (form.end === secondsText(original.endMs) ? original.endMs : parseSeconds(form.end));
   return editInterval(record, document, { id: form.id, labelId: form.labelId, startMs, endMs });
 }

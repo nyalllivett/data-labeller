@@ -36,7 +36,9 @@ export class ReviewStore {
     const form = this.state.form;
     if (!form) return false;
     const interval = this.state.document!.intervals.find((value) => value.id === form.id)!;
-    return JSON.stringify(form) !== JSON.stringify(intervalForm(interval));
+    const { startPositionMs, endPositionMs, ...fields } = form;
+    return JSON.stringify({ ...fields, startPositionMs: startPositionMs ?? interval.startMs, endPositionMs: endPositionMs ?? interval.endMs }) !==
+      JSON.stringify({ ...intervalForm(interval), startPositionMs: interval.startMs, endPositionMs: interval.endMs });
   };
   dirty = (): boolean => !!this.state.document && !sameIntervals(this.state.document, this.state.saved!);
   canLeave = (): boolean => ['library', 'editing', 'load-failed'].includes(this.state.phase) && !this.dirty() && !this.formDirty();
@@ -89,10 +91,17 @@ export class ReviewStore {
     if (!interval) return false;
     this.update({ form: intervalForm(interval), error: null }); return true;
   };
-  setField = (field: 'start' | 'end' | 'labelId', value: string): boolean => {
+  private changeField(field: 'start' | 'end' | 'labelId', value: string, positionMs?: number): boolean {
     if (this.state.phase !== 'editing' || !this.state.form) return false;
-    this.update({ form: { ...this.state.form, [field]: value }, error: null }); return true;
-  };
+    const form = { ...this.state.form, [field]: value };
+    // Manual boundary input clears its numeric report; relabelling keeps both.
+    if (field !== 'labelId') {
+      delete form[`${field}PositionMs`];
+      if (positionMs !== undefined) form[`${field}PositionMs`] = positionMs;
+    }
+    this.update({ form, error: null }); return true;
+  }
+  setField = (field: 'start' | 'end' | 'labelId', value: string): boolean => this.changeField(field, value);
   resetForm = (): boolean => {
     if (this.state.phase !== 'editing' || !this.state.form) return false;
     const interval = this.state.document!.intervals.find((value) => value.id === this.state.form!.id)!;
@@ -131,7 +140,7 @@ export class ReviewStore {
   };
   usePosition = (field: 'start' | 'end'): boolean => {
     if (!this.state.playbackReady || this.state.positionMs === null) return false;
-    return this.setField(field, secondsText(this.state.positionMs));
+    return this.changeField(field, secondsText(this.state.positionMs), this.state.positionMs);
   };
   canSave = (): boolean => this.state.phase === 'editing' && this.dirty() && !this.formDirty();
   save = async (): Promise<boolean> => {

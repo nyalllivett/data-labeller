@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
-import { reviewFixture } from '../../../test/reviewFixture';
+import { reviewFixture, savedRecord } from '../../../test/reviewFixture';
 import { deferred } from '../../../test/captureFixture';
 import { ReviewError, type ReviewErrorCode } from '../ReviewError';
 import type { ReviewState } from '../ReviewStore';
@@ -104,6 +104,21 @@ test('reported position can fill a field; invalid input can be reset; deletion i
   expect(screen.getByText(/No effective intervals/)).toBeVisible();
   await user.press(screen.getByRole('button', { name: 'Undo annotation change' }));
   expect(screen.getByRole('button', { name: 'B interval 2' })).toBeVisible();
+});
+test('Use playback for end applies and saves the exact reported fractional duration instead of reparsing display text', async () => {
+  const f = reviewFixture(); const record = savedRecord(f.record.id, 254_000 / 30);
+  f.recordings.load.mockResolvedValueOnce({ pending: [], saved: [record] }); await f.open();
+  await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
+  await user.press(screen.getByRole('button', { name: 'A interval 1' }));
+  await act(async () => { jest.mocked(VideoPane).mock.lastCall![0].onPlayback(record.id, record.durationMs, true); });
+  await user.press(screen.getByRole('button', { name: 'Use playback for end' }));
+  expect(screen.getByLabelText('Interval end seconds')).toHaveDisplayValue('8.466666666666667');
+  await user.press(screen.getByRole('button', { name: 'Apply interval edit' }));
+  expect(f.store.getSnapshot().document?.intervals[0]?.endMs).toBe(record.durationMs);
+  expect(screen.getByRole('button', { name: 'Save annotations' })).toBeEnabled();
+  await user.press(screen.getByRole('button', { name: 'Save annotations' }));
+  expect(f.documents.get(record.id)?.intervals[0]?.endMs).toBe(record.durationMs);
+  expect(screen.getByText('Annotations saved locally.')).toBeVisible();
 });
 test('failed saves retain fields/document, lock navigation/edit/Undo and retry the same payload', async () => {
   const f = reviewFixture(); await f.open(); await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
