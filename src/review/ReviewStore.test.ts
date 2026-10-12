@@ -1,0 +1,98 @@
+import { deferred } from '../../test/captureFixture';
+import { id } from '../../test/ids';
+import { reviewFixture } from '../../test/reviewFixture';
+import { StorageError } from '../storage/StorageError';
+import { type Annotations, annotations } from './annotations';
+import { ReviewError } from './ReviewError';
+
+beforeEach(() => { jest.spyOn(console, 'info').mockImplementation(() => undefined); });
+test('loads only saved recordings, guards repeated loading/opening and preserves Undo when selecting the same recording', async () => {
+  const f = reviewFixture();
+  expect(await f.store.load()).toBe(false); expect(await f.store.retryOpen()).toBe(false);
+  expect(f.store.close()).toBe(false); expect(f.store.apply()).toBe(false);
+  const pending = deferred<{ pending: []; saved: typeof f.record[] }>(); f.recordings.load.mockReturnValueOnce(pending.promise);
+  const opening = f.store.open(f.project);
+  expect(await f.store.open(f.project)).toBe(false); expect(await f.store.load()).toBe(false);
+  expect(f.store.close()).toBe(false); pending.resolve({ pending: [], saved: [f.record, f.second] }); await opening;
+  expect(await f.store.selectRecord(id(99))).toBe(false);
+  const loading = deferred<Annotations>(); f.repository.load.mockReturnValueOnce(loading.promise);
+  const selecting = f.store.selectRecord(f.record.id);
+  expect(await f.store.selectRecord(f.second.id)).toBe(false); expect(await f.store.retryOpen()).toBe(false);
+  loading.resolve(annotations(f.record, 0, [])); await selecting;
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'editing', document: { intervals: [] }, uri: expect.stringContaining(f.record.id) });
+  expect(await f.store.selectRecord(f.record.id)).toBe(true);
+  expect(f.repository.load).toHaveBeenCalledTimes(1);
+  expect(f.store.close()).toBe(true);
+});
+test('Apply/Delete/Undo preserve stable identity and capture evidence; no-op/invalid edits do not add history', async () => {
+  const f = reviewFixture(); await f.open(); const capture = JSON.stringify(f.record);
+  expect(f.store.selectInterval(99)).toBe(false); expect(f.store.resetForm()).toBe(false);
+  expect(f.store.setField('start', '0')).toBe(false); expect(f.store.delete(99)).toBe(false); expect(f.store.undo()).toBe(false);
+  f.store.selectInterval(0); expect(f.store.apply()).toBe(true); expect(f.store.getSnapshot().history).toHaveLength(0);
+  f.store.setField('start', ''); expect(f.store.apply()).toBe(false); expect(f.store.getSnapshot().error).toBe('invalid-input');
+  f.store.setField('start', '0.7'); expect(f.store.apply()).toBe(false); expect(f.store.getSnapshot().history).toHaveLength(0);
+  f.store.setField('start', '0'); f.store.setField('labelId', id(3)); expect(f.store.apply()).toBe(true);
+  expect(f.store.getSnapshot().document?.intervals[0]).toMatchObject({ id: 0, labelId: id(3), startMs: 0 });
+  expect(f.store.canLeave()).toBe(false); expect(f.store.close()).toBe(false);
+  expect(f.store.delete(0)).toBe(true); expect(f.store.getSnapshot().form).toBeNull();
+  expect(f.store.getSnapshot().document?.intervals[0]?.id).toBe(1);
+  expect(f.store.undo()).toBe(true); expect(f.store.getSnapshot().document?.intervals[0]?.id).toBe(0);
+  expect(f.store.undo()).toBe(true); expect(f.store.dirty()).toBe(false);
+  expect(JSON.stringify(f.record)).toBe(capture);
+});
+test('unapplied fields block selection, Save, deletion, Undo and navigation until explicitly reset/applied', async () => {
+  const f = reviewFixture(); await f.open(); f.store.delete(1); f.store.selectInterval(0); f.store.setField('end', '0.9');
+  expect(f.store.formDirty()).toBe(true); expect(f.store.canLeave()).toBe(false);
+  expect(f.store.selectInterval(0)).toBe(false); expect(f.store.undo()).toBe(false); expect(f.store.delete(0)).toBe(false);
+  expect(f.store.getSnapshot().error).toBe('unapplied-fields');
+  expect(await f.store.save()).toBe(false); expect(await f.store.selectRecord(f.second.id)).toBe(false);
+  expect(f.store.resetForm()).toBe(true); expect(f.store.formDirty()).toBe(false);
+  expect(f.store.undo()).toBe(true); expect(f.store.canLeave()).toBe(true);
+});
+test('Save preserves session Undo; Undo after Save creates dirty edits and subsequent Save uses the committed revision', async () => {
+  const f = reviewFixture(); await f.open(); f.store.delete(0);
+  expect(await f.store.save()).toBe(true); expect(f.store.getSnapshot().history).toHaveLength(1);
+  expect(f.store.dirty()).toBe(false); expect(await f.store.save()).toBe(false);
+  expect(await f.store.selectRecord(f.record.id)).toBe(true); expect(f.store.getSnapshot().history).toHaveLength(1);
+  expect(f.store.undo()).toBe(true); expect(f.store.dirty()).toBe(true);
+  expect(await f.store.save()).toBe(true); expect(f.repository.save.mock.calls.map((call) => call[1])).toEqual([0, 1]);
+  expect(f.store.getSnapshot().saved?.revision).toBe(2);
+  expect(await f.store.selectRecord(f.second.id)).toBe(true); expect(f.store.getSnapshot().history).toEqual([]);
+});
+test('failed/ambiguous saves freeze intent, reject repeated/conflicting actions and retry the identical submission', async () => {
+  const f = reviewFixture(); await f.open(); f.store.selectInterval(0); f.store.setField('start', '0'); f.store.apply();
+  const writing = deferred<Annotations>(); f.repository.save.mockReturnValueOnce(writing.promise);
+  const save = f.store.save();
+  expect(await f.store.save()).toBe(false); expect(await f.store.retrySave()).toBe(false);
+  expect(f.store.apply()).toBe(false); expect(f.store.selectInterval(1)).toBe(false); expect(f.store.setField('end', '1')).toBe(false);
+  expect(f.store.resetForm()).toBe(false); expect(f.store.delete(0)).toBe(false); expect(f.store.undo()).toBe(false); expect(f.store.close()).toBe(false);
+  writing.reject(new Error('/private/path/secret')); expect(await save).toBe(false);
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'save-failed', error: 'storage-failed' });
+  expect(await f.store.selectRecord(f.second.id)).toBe(false);
+  expect(await f.store.retrySave()).toBe(true);
+  expect(f.repository.save.mock.calls[1]).toEqual(f.repository.save.mock.calls[0]);
+  expect(JSON.stringify((console.info as jest.Mock).mock.calls)).not.toContain('/private/path');
+});
+test('conflict keeps the submitted draft and last good baseline; no failed read silently uses capture annotations', async () => {
+  const f = reviewFixture(); f.recordings.load.mockRejectedValueOnce(new StorageError('unavailable'));
+  expect(await f.store.open(f.project)).toBe(false); expect(await f.store.load()).toBe(true);
+  f.repository.load.mockRejectedValueOnce(new StorageError('corrupt'));
+  expect(await f.store.selectRecord(f.record.id)).toBe(false);
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'load-failed', document: null, error: 'invalid-data' });
+  expect(f.resolve).not.toHaveBeenCalled(); expect(await f.store.load()).toBe(false);
+  f.resolve.mockRejectedValueOnce(new ReviewError('media-unavailable'));
+  expect(await f.store.retryOpen()).toBe(false); expect(f.store.getSnapshot().error).toBe('media-unavailable');
+  expect(await f.store.retryOpen()).toBe(true); f.store.delete(0);
+  f.repository.save.mockRejectedValueOnce(new StorageError('conflict')); expect(await f.store.save()).toBe(false);
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'save-failed', error: 'conflict', saved: { revision: 0 }, document: { intervals: [{ id: 1 }] } });
+});
+test('reported playback actions are scoped to the selected recording and never use a stale/unready position', async () => {
+  const f = reviewFixture(); await f.open(); f.store.selectInterval(0);
+  expect(f.store.usePosition('start')).toBe(false);
+  f.store.setPlayback(f.second.id, 999, true); expect(f.store.usePosition('end')).toBe(false);
+  f.store.setPlayback(f.record.id, null, true); expect(f.store.usePosition('start')).toBe(false);
+  f.store.setPlayback(f.record.id, 250, true); expect(f.store.usePosition('start')).toBe(true);
+  expect(f.store.getSnapshot().form?.start).toBe('0.25'); f.store.apply();
+  expect(f.store.getSnapshot().document?.intervals[0]?.startMs).toBe(250);
+  f.store.setPlayback(f.record.id, 300, false); expect(f.store.usePosition('end')).toBe(false);
+});

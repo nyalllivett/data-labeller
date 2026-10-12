@@ -4,6 +4,7 @@ import { captureFixture, deferred } from '../../test/captureFixture';
 import { createRecordingDraft } from './recording';
 import { createNativeMedia, type MediaFile } from './nativeMedia';
 import { id } from '../../test/ids';
+import { savedRecord } from '../../test/reviewFixture';
 
 jest.mock('expo', () => ({ requireNativeModule: jest.fn() }));
 jest.mock('expo-file-system', () => ({ Directory: jest.fn(), File: jest.fn() }));
@@ -41,6 +42,15 @@ test('prepares private persistent staging without creating or overwriting a reco
   expect(f.data.size).toBe(0);
   expect(f.events).toEqual(['prepare']);
   expect(f.directory).toHaveBeenCalledWith('file:///private');
+});
+test('saved-media resolution only reads the known final path/bytes, never creates directories, inspects or promotes stage media', async () => {
+  const f = fixture(); const record = savedRecord(); f.data.set(f.final, record.byteSize);
+  expect(await f.media.resolveSaved(record)).toBe(f.final);
+  expect(f.create).not.toHaveBeenCalled(); expect(f.rename).not.toHaveBeenCalled(); expect(f.inspect).not.toHaveBeenCalled();
+  f.data.delete(f.final); f.data.set(f.stage, record.byteSize);
+  await expect(f.media.resolveSaved(record)).rejects.toThrow('media-unavailable');
+  f.data.set(f.final, 1); await expect(f.media.resolveSaved(record)).rejects.toThrow('media-unavailable');
+  f.prepare.mockRejectedValueOnce(new Error('/private/failure')); await expect(f.media.resolveSaved(record)).rejects.toThrow('media-unavailable');
 });
 test.each(['stage', 'final'] as const)('never overwrites an existing %s recording', async (path) => {
   const f = fixture(); f.data.set(f[path], 123);

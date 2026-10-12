@@ -10,7 +10,7 @@ import { ProjectList } from './ProjectList';
 import { RecoveryPanel } from './RecoveryPanel';
 import { styles } from './styles';
 
-export function ProjectWorkspace({ store, newId, onCapture }: { store: ProjectStore; newId(): string; onCapture(project: Project): void }) {
+export function ProjectWorkspace({ store, newId, onCapture, onReview }: { store: ProjectStore; newId(): string; onCapture(project: Project): void; onReview(project: Project): void }) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
   const [edit, setEdit] = useState<NameEdit | null>(null);
@@ -85,6 +85,7 @@ export function ProjectWorkspace({ store, newId, onCapture }: { store: ProjectSt
                 );
               }}
               capture={() => onCapture(project)}
+              review={() => onReview(project)}
             />
           ) : (
             <ProjectList
@@ -113,7 +114,7 @@ export function ProjectWorkspace({ store, newId, onCapture }: { store: ProjectSt
             onCancel={() => setEdit(null)}
           />
         )}
-        <Text style={styles.text}>Video review and export are coming in later slices.</Text>
+        <Text style={styles.text}>Video and annotation export is coming in slice E.</Text>
       </ScrollView>
     </SafeAreaView>
   );

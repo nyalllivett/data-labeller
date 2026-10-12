@@ -1,0 +1,108 @@
+import { act, fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { reviewFixture } from '../../../test/reviewFixture';
+import { deferred } from '../../../test/captureFixture';
+import { ReviewError, type ReviewErrorCode } from '../ReviewError';
+import type { ReviewState } from '../ReviewStore';
+import type { Annotations } from '../annotations';
+import { ReviewScreen } from './ReviewScreen';
+import { VideoPane } from './VideoPane';
+
+jest.mock('./VideoPane', () => {
+  const React = jest.requireActual('react'); const { View } = jest.requireActual('react-native');
+  return { VideoPane: jest.fn((props) => React.createElement(View, { ...props, accessibilityLabel: 'Saved video' })) };
+});
+beforeEach(() => { jest.useFakeTimers(); jest.spyOn(console, 'info').mockImplementation(() => undefined); });
+afterEach(() => { jest.useRealTimers(); });
+
+test('selects a saved recording without camera permission; video precedes timeline and immutable warning/provenance remain visible', async () => {
+  const errors = jest.spyOn(console, 'error');
+  const f = reviewFixture(); await f.store.open(f.project);
+  await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
+  await user.press(screen.getByRole('button', { name: 'Review recording 1' }));
+  expect(screen.getByLabelText('Saved video')).toBeVisible();
+  expect(screen.getByRole('header', { name: 'Label timeline' })).toBeVisible();
+  expect(screen.getByRole('alert')).toHaveTextContent(/untimed label changes remain recorded/);
+  expect(screen.getByText(/Original capture events and timing provenance remain unchanged/)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Undo annotation change' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Save annotations' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'A interval 1' })).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'A interval 1' }));
+  expect(screen.getByLabelText('Interval start seconds')).toHaveDisplayValue('0.1');
+  expect(screen.getByRole('button', { name: 'Use playback for start' })).toBeDisabled();
+  expect(jest.mocked(VideoPane).mock.lastCall![0]).toMatchObject({ id: f.record.id, seekMs: 100 });
+  await user.press(screen.getByRole('button', { name: 'Review recording 2' }));
+  expect(jest.mocked(VideoPane).mock.lastCall![0]).toMatchObject({ id: f.second.id, seekMs: null });
+  await user.press(screen.getByRole('button', { name: 'Back to projects' }));
+  expect(f.store.getSnapshot().phase).toBe('closed');
+  expect(errors).not.toHaveBeenCalled();
+});
+test('edits bounds and historical label, guards unapplied fields, saves and supports Undo after Save', async () => {
+  const f = reviewFixture(); await f.open(); await render(<ReviewScreen store={f.store} />);
+  const user = userEvent.setup(); await user.press(screen.getByRole('button', { name: 'A interval 1' }));
+  await fireEvent.changeText(screen.getByLabelText('Interval start seconds'), '0');
+  await fireEvent.changeText(screen.getByLabelText('Interval end seconds'), '0.9');
+  expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Save annotations' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Delete interval' })).toBeDisabled();
+  await user.press(screen.getByRole('radio', { name: 'Interval label B' }));
+  await user.press(screen.getByRole('button', { name: 'Apply interval edit' }));
+  expect(f.store.getSnapshot().document?.intervals[0]).toMatchObject({ labelId: f.record.labels[1]!.id, startMs: 0, endMs: 900 });
+  expect(screen.getByRole('button', { name: 'Save annotations' })).toBeEnabled();
+  await user.press(screen.getByRole('button', { name: 'Save annotations' }));
+  expect(screen.getByText('Annotations saved locally (revision 1).')).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'Undo annotation change' }));
+  expect(screen.getByText('Unsaved annotation changes.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled();
+  expect(f.store.getSnapshot().document?.intervals[0]?.startMs).toBe(100);
+});
+test('reported position can fill a field; invalid input can be reset; deletion is undoable and empty overlays are explicit', async () => {
+  const f = reviewFixture(); await f.open(); await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
+  await user.press(screen.getByRole('button', { name: 'A interval 1' }));
+  await act(async () => { jest.mocked(VideoPane).mock.lastCall![0].onPlayback(f.record.id, 250, true); });
+  await user.press(screen.getByRole('button', { name: 'Use playback for start' }));
+  expect(screen.getByLabelText('Interval start seconds')).toHaveDisplayValue('0.25');
+  await user.press(screen.getByRole('button', { name: 'Use playback for end' }));
+  await fireEvent.changeText(screen.getByLabelText('Interval start seconds'), '');
+  await user.press(screen.getByRole('button', { name: 'Apply interval edit' }));
+  expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/Enter a number of seconds/);
+  await user.press(screen.getByRole('button', { name: 'Reset fields' }));
+  await user.press(screen.getByRole('button', { name: 'Delete interval' }));
+  expect(screen.getByText('Select an interval to inspect or edit.')).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'B interval 2' }));
+  await user.press(screen.getByRole('button', { name: 'Delete interval' }));
+  expect(screen.getByText(/No effective intervals/)).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'Undo annotation change' }));
+  expect(screen.getByRole('button', { name: 'B interval 2' })).toBeVisible();
+});
+test('failed saves retain fields/document, lock navigation/edit/Undo and retry the same payload', async () => {
+  const f = reviewFixture(); await f.open(); await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
+  await user.press(screen.getByRole('button', { name: 'A interval 1' }));
+  await user.press(screen.getByRole('button', { name: 'Delete interval' }));
+  const saving = deferred<Annotations>(); f.repository.save.mockReturnValueOnce(saving.promise);
+  await user.press(screen.getByRole('button', { name: 'Save annotations' }));
+  expect(screen.getByText('Saving annotations…')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Review recording 2' })).toBeDisabled();
+  await act(async () => { saving.reject(new Error('private secret')); });
+  expect(screen.getByRole('button', { name: 'Retry annotation save' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Undo annotation change' })).toBeDisabled();
+  await user.press(screen.getByRole('button', { name: 'Retry annotation save' }));
+  expect(screen.getByText('Annotations saved locally (revision 1).')).toBeVisible();
+  expect(f.repository.save.mock.calls[0]).toEqual(f.repository.save.mock.calls[1]);
+});
+test('library/open failures offer scoped retries and an empty saved library explains the next step', async () => {
+  const f = reviewFixture(); f.recordings.load.mockRejectedValueOnce(new Error('secret'));
+  await f.store.open(f.project); await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
+  await user.press(screen.getByRole('button', { name: 'Retry opening review' }));
+  f.resolve.mockRejectedValueOnce(new ReviewError('media-unavailable'));
+  await user.press(screen.getByRole('button', { name: 'Review recording 1' }));
+  await user.press(screen.getByRole('button', { name: 'Retry opening review' }));
+  expect(screen.getByLabelText('Saved video')).toBeVisible();
+  await act(async () => { f.store.close(); f.recordings.load.mockResolvedValueOnce({ pending: [], saved: [] }); await f.store.open(f.project); });
+  expect(screen.getByText('No saved recordings yet. Capture and save video first.')).toBeVisible();
+});
+test.each<ReviewErrorCode>(['invalid-interval', 'invalid-input', 'unapplied-fields', 'storage-failed', 'conflict', 'invalid-data', 'unsupported-schema', 'media-unavailable', 'playback-failed'])('renders fixed actionable %s errors', async (error) => {
+  const f = reviewFixture(); await f.store.open(f.project);
+  const state: ReviewState = { ...f.store.getSnapshot(), phase: 'load-failed', error };
+  jest.spyOn(f.store, 'getSnapshot').mockReturnValue(state);
+  await render(<ReviewScreen store={f.store} />); expect(screen.getByRole('alert')).toBeVisible();
+});
