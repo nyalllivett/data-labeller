@@ -1,0 +1,40 @@
+import { render, screen, userEvent } from '@testing-library/react-native';
+import { savedRecord } from '../../../test/reviewFixture';
+import { annotations, originalAnnotations } from '../annotations';
+import { Timeline } from './Timeline';
+
+test('zoom/pan/Fit share the same time window on every track and playhead', async () => {
+  const record = savedRecord(); const document = originalAnnotations(record); const select = jest.fn(); const user = userEvent.setup();
+  await render(<Timeline record={record} document={document} positionMs={500} selected={0} disabled={false} select={select} />);
+  expect(screen.getByRole('button', { name: 'Zoom out' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Earlier' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'A interval 1', selected: true })).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'A interval 1' })); expect(select).toHaveBeenCalledWith(0);
+  await user.press(screen.getByRole('button', { name: 'Zoom in' }));
+  expect(screen.getByText('Visible: 0.25–0.75 seconds')).toBeVisible();
+  for (const playhead of screen.getAllByLabelText('Timeline playhead')) expect(playhead).toHaveStyle({ left: '50%' });
+  expect(screen.getByRole('button', { name: 'A interval 1' })).toHaveStyle({ left: '0%', width: '70%' });
+  await user.press(screen.getByRole('button', { name: 'Earlier' })); expect(screen.getByText('Visible: 0–0.5 seconds')).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'Later' }));
+  await user.press(screen.getByRole('button', { name: 'Later' })); expect(screen.getByText('Visible: 0.5–1 seconds')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Later' })).toBeDisabled();
+  await user.press(screen.getByRole('button', { name: 'Zoom out' })); expect(screen.getByText('Visible: 0–1 seconds')).toBeVisible();
+  await user.press(screen.getByRole('button', { name: 'Zoom in' }));
+  await user.press(screen.getByRole('button', { name: 'Fit timeline' })); expect(screen.getByText('Visible: 0–1 seconds')).toBeVisible();
+});
+test('same-label overlaps are individually selectable, empty label tracks remain and zero-end markers have visual hit targets only', async () => {
+  const record = savedRecord(); const source = originalAnnotations(record); const select = jest.fn();
+  const document = annotations(record, 1, source.intervals.map((interval) => ({ ...interval, labelId: record.labels[0]!.id })));
+  const { rerender } = await render(<Timeline record={record} document={document} positionMs={null} selected={undefined} disabled={false} select={select} />);
+  expect(screen.getByLabelText('Track B')).toBeVisible(); expect(screen.getByText('No intervals')).toBeVisible();
+  const user = userEvent.setup(); await user.press(screen.getByRole('button', { name: 'A interval 2' })); expect(select).toHaveBeenCalledWith(1);
+  const zero = annotations(record, 2, [{ ...document.intervals[0]!, startMs: 1000, endMs: 1000 }]);
+  await rerender(<Timeline record={record} document={zero} positionMs={0} selected={0} disabled={true} select={select} />);
+  const marker = screen.getByRole('button', { name: 'A interval 1' });
+  expect(marker).toHaveStyle({ left: '100%', width: '0%', minWidth: 24, transform: [{ translateX: -24 }] });
+  expect(marker).toBeDisabled(); await user.press(marker); expect(select).toHaveBeenCalledTimes(1);
+  expect(zero.intervals[0]).toMatchObject({ startMs: 1000, endMs: 1000 });
+  await user.press(screen.getByRole('button', { name: 'Zoom in' }));
+  expect(screen.queryByRole('button', { name: 'A interval 1' })).not.toBeOnTheScreen();
+  expect(screen.queryAllByLabelText('Timeline playhead')).toEqual([]);
+});

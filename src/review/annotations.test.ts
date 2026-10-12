@@ -53,6 +53,11 @@ test('unchanged form/relabel preserves exact doubles; valid seconds are converte
 test.each(['', ' ', 'NaN', 'Infinity', '0x10', '1,2', '1e309', '1e308'])('rejects ambiguous/nonfinite seconds %s', (value) => {
   expect(() => parseSeconds(value)).toThrow('invalid-input');
 });
+test('decimal endpoint entry converts units without arithmetic overshoot, snapping or a tolerance', () => {
+  const record = savedRecord(id(10), 2007); const document = originalAnnotations(record);
+  expect(parseSeconds('2.007')).toBe(2007); expect(parseSeconds('2.0070')).toBe(2007);
+  expect(applyForm(record, document, { ...intervalForm(document.intervals[0]!), end: '2.007' }).intervals[0]?.endMs).toBe(record.durationMs);
+});
 test('fixed errors preserve actionable storage codes and discard raw underlying data', () => {
   const own = new ReviewError('invalid-input'); expect(reviewError(own)).toBe(own);
   expect(reviewError(new StorageError('conflict')).code).toBe('conflict');

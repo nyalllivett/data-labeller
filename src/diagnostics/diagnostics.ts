@@ -11,7 +11,8 @@ export type ReviewDiagnosticEvent =
   | 'review.saving'
   | 'review.saved'
   | 'review.failed'
-  | 'review.playback_failed';
+  | 'review.playback_failed'
+  | 'review.position_unavailable';
 export type CaptureDiagnosticEvent =
   | 'capture.starting'
   | 'capture.recording'

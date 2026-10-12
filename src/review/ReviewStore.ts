@@ -42,11 +42,11 @@ export class ReviewStore {
   canLeave = (): boolean => ['library', 'editing', 'load-failed'].includes(this.state.phase) && !this.dirty() && !this.formDirty();
   close = (): boolean => {
     if (!this.canLeave()) return false;
-    this.update({ phase: 'closed', project: null, record: null, form: null }); return true;
+    this.update({ phase: 'closed', project: null, record: null, form: null, positionMs: null, playbackReady: false }); return true;
   };
   open = async (project: Project): Promise<boolean> => {
     if (this.state.phase !== 'closed') return false;
-    this.update({ phase: 'loading', project, recordings: [], record: null, document: null, saved: null, history: [], form: null, uri: null, error: null });
+    this.update({ phase: 'loading', project, recordings: [], record: null, document: null, saved: null, history: [], form: null, uri: null, error: null, positionMs: null, playbackReady: false });
     return this.loadLibrary();
   };
   load = async (): Promise<boolean> => {

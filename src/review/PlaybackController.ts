@@ -8,9 +8,9 @@ export interface PlaybackPort {
   pause(): void;
   seek(mediaMs: number): void;
 }
-export type PlaybackState = PlaybackUpdate & Readonly<{ error: boolean }>;
+export type PlaybackState = PlaybackUpdate & Readonly<{ error: boolean; positionUsable: boolean }>;
 export class PlaybackController {
-  private state: PlaybackState = { status: 'idle', positionMs: 0, playing: false, error: false };
+  private state: PlaybackState = { status: 'idle', positionMs: 0, playing: false, error: false, positionUsable: false };
   private listeners = new Set<() => void>();
   private port: PlaybackPort | undefined;
   private remove: (() => void) | undefined;
@@ -18,7 +18,11 @@ export class PlaybackController {
   getSnapshot = (): PlaybackState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(values: Partial<PlaybackState>): void { this.state = { ...this.state, ...values }; for (const listener of this.listeners) listener(); }
-  private failed(): false { this.update({ error: true }); emitDiagnostic('review.playback_failed'); return false; }
+  private failed(): false {
+    this.update({ error: true });
+    try { this.port?.pause(); } catch { /* A failed native control may need player recreation. */ }
+    emitDiagnostic('review.playback_failed'); return false;
+  }
   connect(port: PlaybackPort): void {
     this.port = port;
     try {
@@ -36,14 +40,19 @@ export class PlaybackController {
     try { port?.pause(); } catch { this.failed(); }
   }
   private receive(update: Partial<PlaybackUpdate>): void {
-    if (update.status === 'error') { this.update({ status: 'error' }); this.failed(); return; }
-    if (update.positionMs !== undefined && (!Number.isFinite(update.positionMs) || update.positionMs < 0 || update.positionMs > this.durationMs)) {
-      this.failed(); return;
+    if (update.status === 'error') { this.update({ status: 'error', playing: update.playing ?? this.state.playing }); this.failed(); return; }
+    if (update.positionMs !== undefined) {
+      const positionUsable = Number.isFinite(update.positionMs) && update.positionMs >= 0 && update.positionMs <= this.durationMs;
+      this.update({ ...update, positionUsable, positionMs: positionUsable ? update.positionMs : this.state.positionMs });
+      if (!positionUsable) emitDiagnostic('review.position_unavailable');
+      return;
     }
     this.update(update);
   }
   toggle = (): boolean => {
-    if (!this.port || this.state.error || this.state.status !== 'readyToPlay') return false;
+    if (!this.port) return false;
+    // Pause remains available after a failure while native playback may continue.
+    if (!this.state.playing && (this.state.error || this.state.status !== 'readyToPlay')) return false;
     try { if (this.state.playing) this.port.pause(); else this.port.play(); return true; }
     catch { return this.failed(); }
   };

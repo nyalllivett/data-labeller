@@ -19,7 +19,8 @@ function NativeVideo({ id, uri, durationMs, onPlayback, seekMs, seekRequest }: P
     return () => { controller.disconnect(); onPlayback(id, null, false); };
   }, [controller, player, id, onPlayback]);
   const ready = state.status === 'readyToPlay' && !state.error;
-  useEffect(() => { onPlayback(id, ready ? state.positionMs : null, ready); }, [id, ready, state.positionMs, onPlayback]);
+  const usable = ready && state.positionUsable;
+  useEffect(() => { onPlayback(id, usable ? state.positionMs : null, usable); }, [id, usable, state.positionMs, onPlayback]);
   useEffect(() => {
     if (ready && seekMs !== null && seekRequest !== consumedSeek.current) {
       consumedSeek.current = seekRequest;
@@ -28,9 +29,10 @@ function NativeVideo({ id, uri, durationMs, onPlayback, seekMs, seekRequest }: P
   }, [controller, seekMs, seekRequest, ready]);
   return <>
     <VideoView player={player} nativeControls={false} contentFit="contain" style={styles.video} />
-    <Text>Reported playback: {(state.positionMs / 1000).toFixed(3)} seconds. Seeking is provisional until reported by the player.</Text>
-    <Button title={state.playing ? 'Pause video' : 'Play video'} disabled={!ready} onPress={controller.toggle} />
-    {state.error && <Text accessibilityRole="alert">Playback is unavailable or its position is outside the captured timeline. Keep the media and retry video.</Text>}
+    <Text>{usable ? `Reported playback: ${(state.positionMs / 1000).toFixed(3)} seconds.` : 'Awaiting a usable playback position.'} Reported positions do not confirm displayed-frame arrival.</Text>
+    <Button title={state.playing ? 'Pause video' : 'Play video'} disabled={!state.playing && !ready} onPress={controller.toggle} />
+    {ready && !state.positionUsable && <Text accessibilityRole="alert">Player position is unavailable or outside captured bounds. Playback controls remain available; no annotation time was assigned.</Text>}
+    {state.error && <Text accessibilityRole="alert">Playback or the last control request could not be confirmed. Keep the media, Pause if needed and Retry video.</Text>}
   </>;
 }
 export function VideoPane(props: Props) {

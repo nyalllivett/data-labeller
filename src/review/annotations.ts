@@ -43,8 +43,11 @@ export function deleteInterval(record: SavedRecording, document: Annotations, id
 export function secondsText(mediaMs: number): string { return String(mediaMs / 1000); }
 export function parseSeconds(text: string): number {
   const value = text.trim();
-  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value)) throw new ReviewError('invalid-input');
-  const mediaMs = Number(value) * 1000;
+  const parts = /^([+-]?(?:\d+\.?\d*|\.\d+))(?:e([+-]?\d+))?$/i.exec(value);
+  if (!parts) throw new ReviewError('invalid-input');
+  // Shift decimal units before parsing once. E.g. 2.007 seconds is exactly
+  // 2007 ms, rather than a multiplied double just beyond the video endpoint.
+  const mediaMs = Number(`${parts[1]}e${Number(parts[2] ?? 0) + 3}`);
   if (!Number.isFinite(mediaMs)) throw new ReviewError('invalid-input');
   return mediaMs;
 }

@@ -36,7 +36,10 @@ export function ReviewScreen({ store }: { store: ReviewStore }) {
     {state.phase === 'load-failed' && <Button title="Retry opening review" onPress={() => { void (record ? store.retryOpen() : store.load()); }} />}
     {!state.recordings.length && state.phase === 'library' && <Text>No saved recordings yet. Capture and save video first.</Text>}
     {state.recordings.map((item, index) => <Button key={item.id} title={`Review recording ${index + 1}`}
-      disabled={!store.canLeave()} onPress={() => { void store.selectRecord(item.id); }} />)}
+      disabled={!store.canLeave()} onPress={() => {
+        if (item.id !== record?.id && store.canLeave()) setSeek({ recordingId: null, mediaMs: null, request: 0 });
+        void store.selectRecord(item.id);
+      }} />)}
     {record && document && state.uri && <>
       <Text>Captured project: {record.projectName}; duration {record.durationMs / 1000} seconds.</Text>
       {record.annotationFailures.length > 0 && <Text accessibilityRole="alert">Capture annotations are incomplete: {record.annotationFailures.length} untimed label changes remain recorded. Editing intervals does not resolve those failures.</Text>}
@@ -49,7 +52,7 @@ export function ReviewScreen({ store }: { store: ReviewStore }) {
       {document.intervals.map((interval) => <Button key={interval.id} title={`Inspect interval ${interval.id + 1}: ${record.labels.find((label) => label.id === interval.labelId)!.name}, ${interval.startMs / 1000}–${interval.endMs / 1000} seconds`}
         disabled={!editable || store.formDirty()} onPress={() => select(interval.id)} />)}
       <IntervalEditor store={store} state={{ ...state, record }} />
-      <Text>{store.dirty() ? 'Unsaved annotation changes.' : `Annotations saved locally (revision ${state.saved!.revision}).`}</Text>
+      <Text>{state.phase === 'save-failed' ? 'Annotation save is unconfirmed. Submitted changes are retained.' : store.dirty() ? 'Unsaved annotation changes.' : `Annotations saved locally (revision ${state.saved!.revision}).`}</Text>
       {store.formDirty() && <Text>Unapplied fields: Apply or Reset before saving, Undo or leaving.</Text>}
       <Button title="Undo annotation change" disabled={!editable || !state.history.length || store.formDirty()} onPress={store.undo} />
       <Button title="Save annotations" disabled={!store.canSave()} onPress={() => { void store.save(); }} />

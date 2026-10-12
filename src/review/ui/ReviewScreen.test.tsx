@@ -32,6 +32,8 @@ test('selects a saved recording without camera permission; video precedes timeli
   expect(jest.mocked(VideoPane).mock.lastCall![0]).toMatchObject({ id: f.record.id, seekMs: 100 });
   await user.press(screen.getByRole('button', { name: 'Review recording 2' }));
   expect(jest.mocked(VideoPane).mock.lastCall![0]).toMatchObject({ id: f.second.id, seekMs: null });
+  await user.press(screen.getByRole('button', { name: 'Review recording 1' }));
+  expect(jest.mocked(VideoPane).mock.lastCall![0]).toMatchObject({ id: f.record.id, seekMs: null, seekRequest: 0 });
   await user.press(screen.getByRole('button', { name: 'Back to projects' }));
   expect(f.store.getSnapshot().phase).toBe('closed');
   expect(errors).not.toHaveBeenCalled();
@@ -77,13 +79,17 @@ test('reported position can fill a field; invalid input can be reset; deletion i
 test('failed saves retain fields/document, lock navigation/edit/Undo and retry the same payload', async () => {
   const f = reviewFixture(); await f.open(); await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
   await user.press(screen.getByRole('button', { name: 'A interval 1' }));
-  await user.press(screen.getByRole('button', { name: 'Delete interval' }));
+  await fireEvent.changeText(screen.getByLabelText('Interval start seconds'), '0');
+  await user.press(screen.getByRole('button', { name: 'Apply interval edit' }));
   const saving = deferred<Annotations>(); f.repository.save.mockReturnValueOnce(saving.promise);
   await user.press(screen.getByRole('button', { name: 'Save annotations' }));
   expect(screen.getByText('Saving annotations…')).toBeVisible();
+  expect(screen.getByLabelText('Interval start seconds')).toBeDisabled();
+  expect(screen.getByRole('radio', { name: 'Interval label B' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Review recording 2' })).toBeDisabled();
   await act(async () => { saving.reject(new Error('private secret')); });
   expect(screen.getByRole('button', { name: 'Retry annotation save' })).toBeEnabled();
+  expect(screen.getByText('Annotation save is unconfirmed. Submitted changes are retained.')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Undo annotation change' })).toBeDisabled();
   await user.press(screen.getByRole('button', { name: 'Retry annotation save' }));
   expect(screen.getByText('Annotations saved locally (revision 1).')).toBeVisible();

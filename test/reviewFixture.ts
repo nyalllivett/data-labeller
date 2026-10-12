@@ -5,13 +5,13 @@ import { annotations, originalAnnotations, type Annotations } from '../src/revie
 import type { AnnotationRepository } from '../src/review/AnnotationRepository';
 import { ReviewStore } from '../src/review/ReviewStore';
 
-export function savedRecord(recordId = id(10)): SavedRecording {
+export function savedRecord(recordId = id(10), durationMs = 1000): SavedRecording {
   const { project } = captureFixture();
   let draft = createRecordingDraft(recordId, project, 'back', 'mov');
   for (const [labelId, mediaMs] of [[id(2), 100], [id(3), 200], [id(2), 600]] as const) {
     draft = toggleLabel(draft, labelId, { recordingId: recordId, mediaMs, source: 'avcapture-recorded-duration' });
   }
-  return finalizeRecording({ ...draft, termination: 'stopped', annotationFailures: [{ labelId: id(3), afterEvent: 3, reason: 'clock-unavailable' }] }, { durationMs: 1000, byteSize: 123 });
+  return finalizeRecording({ ...draft, termination: 'stopped', annotationFailures: [{ labelId: id(3), afterEvent: 3, reason: 'clock-unavailable' }] }, { durationMs, byteSize: 123 });
 }
 export function reviewFixture() {
   const { project } = captureFixture();
