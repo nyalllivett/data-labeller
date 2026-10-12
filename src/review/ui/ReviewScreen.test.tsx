@@ -51,11 +51,40 @@ test('edits bounds and historical label, guards unapplied fields, saves and supp
   expect(f.store.getSnapshot().document?.intervals[0]).toMatchObject({ labelId: f.record.labels[1]!.id, startMs: 0, endMs: 900 });
   expect(screen.getByRole('button', { name: 'Save annotations' })).toBeEnabled();
   await user.press(screen.getByRole('button', { name: 'Save annotations' }));
-  expect(screen.getByText('Annotations saved locally (revision 1).')).toBeVisible();
+  expect(screen.getByText('Annotations saved locally.')).toBeVisible();
+  const seek = jest.mocked(VideoPane).mock.lastCall![0].seekRequest;
+  await user.press(screen.getByRole('button', { name: 'Review recording 1' }));
+  expect(f.store.getSnapshot().history).toHaveLength(1);
+  expect(jest.mocked(VideoPane).mock.lastCall![0].seekRequest).toBe(seek);
   await user.press(screen.getByRole('button', { name: 'Undo annotation change' }));
   expect(screen.getByText('Unsaved annotation changes.')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled();
   expect(f.store.getSnapshot().document?.intervals[0]?.startMs).toBe(100);
+});
+test('loading states block navigation; interrupted capture and interval-list inspection preserve the same review contract', async () => {
+  const f = reviewFixture();
+  const workspace = deferred<{ pending: []; saved: (typeof f.record)[] }>();
+  f.recordings.load.mockReturnValueOnce(workspace.promise);
+  const opened = f.store.open(f.project);
+  await render(<ReviewScreen store={f.store} />);
+  expect(screen.getByText('Loading local recordings and annotations…')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled();
+  await act(async () => { workspace.resolve({ pending: [], saved: [{ ...f.record, termination: 'interrupted', annotationFailures: [] }] }); await opened; });
+  const document = deferred<Annotations>(); f.repository.load.mockReturnValueOnce(document.promise);
+  const user = userEvent.setup(); await user.press(screen.getByRole('button', { name: 'Review recording 1' }));
+  expect(screen.getByText('Loading local recordings and annotations…')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled();
+  await act(async () => { document.resolve({ recordingId: f.record.id, revision: 0, intervals: f.record.intervals.map((interval, id) => ({ ...interval, id })) }); });
+  expect(screen.getByText('Capture was interrupted.')).toBeVisible();
+  expect(screen.queryByText(/untimed label changes remain recorded/)).toBeNull();
+  const accepted = jest.spyOn(f.store, 'selectInterval').mockReturnValueOnce(false);
+  await user.press(screen.getByRole('button', { name: 'Inspect interval 1: A, 0.1–0.6 seconds' }));
+  expect(accepted).toHaveBeenCalledWith(0);
+  expect(jest.mocked(VideoPane).mock.lastCall![0].seekMs).toBeNull();
+  expect(screen.queryByLabelText('Interval start seconds')).toBeNull();
+  await user.press(screen.getByRole('button', { name: 'Inspect interval 1: A, 0.1–0.6 seconds' }));
+  expect(screen.getByLabelText('Interval start seconds')).toHaveDisplayValue('0.1');
+  expect(jest.mocked(VideoPane).mock.lastCall![0].seekMs).toBe(100);
 });
 test('reported position can fill a field; invalid input can be reset; deletion is undoable and empty overlays are explicit', async () => {
   const f = reviewFixture(); await f.open(); await render(<ReviewScreen store={f.store} />); const user = userEvent.setup();
@@ -92,7 +121,7 @@ test('failed saves retain fields/document, lock navigation/edit/Undo and retry t
   expect(screen.getByText('Annotation save is unconfirmed. Submitted changes are retained.')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Undo annotation change' })).toBeDisabled();
   await user.press(screen.getByRole('button', { name: 'Retry annotation save' }));
-  expect(screen.getByText('Annotations saved locally (revision 1).')).toBeVisible();
+  expect(screen.getByText('Annotations saved locally.')).toBeVisible();
   expect(f.repository.save.mock.calls[0]).toEqual(f.repository.save.mock.calls[1]);
 });
 test('library/open failures offer scoped retries and an empty saved library explains the next step', async () => {

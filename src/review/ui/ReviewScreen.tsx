@@ -10,7 +10,7 @@ const errors = {
   'invalid-interval': 'Use a captured label and finite bounds from zero to the video duration, with start no later than end.',
   'invalid-input': 'Enter a number of seconds for both bounds. Blank or nonnumeric fields cannot be applied.',
   'unapplied-fields': 'Apply or reset the current fields before changing selection or using Undo.',
-  'storage-failed': 'Annotations could not be confirmed. Keep the app data and Retry the same save.',
+  'storage-failed': 'Local recording or annotation storage could not be confirmed. Keep the app data and use the available Retry action.',
   conflict: 'The annotation save conflicts with committed data. Your submitted edit is retained; no data was overwritten.',
   'invalid-data': 'Stored annotations could not be read safely. Keep the app data; it has not been reset.',
   'unsupported-schema': 'This annotation database needs a compatible app version. Keep the app data.',
@@ -52,7 +52,7 @@ export function ReviewScreen({ store }: { store: ReviewStore }) {
       {document.intervals.map((interval) => <Button key={interval.id} title={`Inspect interval ${interval.id + 1}: ${record.labels.find((label) => label.id === interval.labelId)!.name}, ${interval.startMs / 1000}–${interval.endMs / 1000} seconds`}
         disabled={!editable || store.formDirty()} onPress={() => select(interval.id)} />)}
       <IntervalEditor store={store} state={{ ...state, record }} />
-      <Text>{state.phase === 'save-failed' ? 'Annotation save is unconfirmed. Submitted changes are retained.' : store.dirty() ? 'Unsaved annotation changes.' : `Annotations saved locally (revision ${state.saved!.revision}).`}</Text>
+      <Text>{state.phase === 'save-failed' ? 'Annotation save is unconfirmed. Submitted changes are retained.' : store.dirty() ? 'Unsaved annotation changes.' : 'Annotations saved locally.'}</Text>
       {store.formDirty() && <Text>Unapplied fields: Apply or Reset before saving, Undo or leaving.</Text>}
       <Button title="Undo annotation change" disabled={!editable || !state.history.length || store.formDirty()} onPress={store.undo} />
       <Button title="Save annotations" disabled={!store.canSave()} onPress={() => { void store.save(); }} />

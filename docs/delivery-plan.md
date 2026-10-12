@@ -14,7 +14,7 @@ Keep safeguards proportional: use the simplest correct design for credible user 
 - Slice A: independently reviewed at `a6acb30c3c74aa5b43b1e5fa9f70839db95b97ad` and merged by the parent as `967b7e6856fb3759e9565a4c0b3501a145f4c2d0` ([PR #2](https://github.com/nyalllivett/data-labeller/pull/2)).
 - Slice B: independently approved at `e984d51d19a7aaa22f655725a604961006333867` and parent-merged as `dabff1cb98467d2f6c39c8992f23e2f708c42057` in [PR #3](https://github.com/nyalllivett/data-labeller/pull/3), with documented native execution limits. See [slice B decisions and checks](slice-b.md).
 - Slice C: independently approved at `98fa9fb55f22d8713d3f1fb828a5cbad109a19fa` and parent-merged as `4af3e4f16a82ac176f158dd192c188ec79ff7978` in [PR #4](https://github.com/nyalllivett/data-labeller/pull/4). [Capture decisions and checks](slice-c.md) retain native execution/device limits.
-- Slice D: review/editing/Undo in progress on `0005-review-editor` from that exact C merge; [scope and model](slice-d.md). E remains unimplemented.
+- Slice D: review/editing/Undo implementation and cloud checks complete on `0005-review-editor` from that exact C merge, in draft [PR #5](https://github.com/nyalllivett/data-labeller/pull/5). Independent exact-SHA review and parent merge remain pending; [decisions/checks/native limits](slice-d.md). E remains unimplemented.
 - Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
 - Native SDK/timing feasibility: official docs and installed camera/playback sources inspected. C adds a small pinned native route for reported media-duration samples, without a JS start offset; physical-tap lag remains unquantified and acceptance unverified. Both platform bundles, generation and source-build/autolinking selection are checked. Project metadata and coordinated recording/media save/recovery are implemented with controlled units; actual native durability is unverified.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
@@ -59,7 +59,7 @@ Implementation status: capture/independent toggles, fixed Stop, snapshots, known
 
 ### D. Review, interval edits, and Undo
 
-Implementation in progress on `0005-review-editor`; [slice D decisions](slice-d.md) record the explicit Apply/Save/session Undo model and immutable capture evidence.
+Implementation and cloud verification complete on `0005-review-editor`, draft PR #5, pending independent review/parent merge. Saved-recording selection, video above a common-scale zoomable per-label timeline, interval-bound/label edits, deletion and explicit Save/session Undo are implemented. Original capture evidence/untimed failures remain immutable. All 33 unit suites / 287 tests, strict types, lint, fresh install, both bundles and config/autolinking pass. Doctor's two remote checks fail; native/device execution remains unverified. [Slice D decisions](slice-d.md) record the model, failure/retry semantics and verification limits.
 
 - Show video above a zoomable per-label timeline.
 - Implement inspection and interval-bound adjustment, editing, deletion, and Undo using agreed semantics.
