@@ -6,20 +6,26 @@ import { CaptureError } from './CaptureError';
 import type { MediaFiles } from './MediaFiles';
 import type { RecordingDraft } from './recording';
 
-export type MediaFile = Pick<File, 'uri' | 'exists' | 'size'> & { move(destination: MediaFile): Promise<void> };
+export type MediaFile = Pick<File, 'uri' | 'exists' | 'size'> & { rename(name: string): void | Promise<void> };
 export type MediaDirectory = Pick<Directory, 'uri'> & { create(): void | Promise<void> };
 
 export function createNativeMedia(
   preparePrivate: () => Promise<string> = () => requireNativeModule<{ prepareDatabaseDirectory(): Promise<string> }>('PrivateStorage').prepareDatabaseDirectory(),
   directory: (base: string) => MediaDirectory = (base) => {
+    const parent = new Directory(base);
     const value = new Directory(base, 'recordings');
-    return { get uri() { return value.uri; }, create: () => value.create({ idempotent: true, intermediates: true }) };
+    return { get uri() { return value.uri; }, create: () => {
+      // Outside filesDir/cacheDir, Android checks the existing target's access.
+      // Create through the prepared parent; verify mkdir's otherwise ignored result.
+      if (!value.exists) parent.createDirectory('recordings');
+      if (!value.exists) throw new CaptureError('media-unavailable');
+    } };
   },
   file: (base: string, name: string) => MediaFile = (base, name) => {
     const value = new File(base, name);
     return {
       get uri() { return value.uri; }, get exists() { return value.exists; }, get size() { return value.size; },
-      move: (destination) => value.move(new File(destination.uri)),
+      rename: (name) => value.rename(name),
     };
   },
   inspect: (uri: string) => Promise<number> = (uri) => requireNativeModule<{ inspectVideo(uri: string): Promise<number> }>('CaptureMedia').inspectVideo(uri),
@@ -48,7 +54,8 @@ export function createNativeMedia(
         if (!source.exists || !Number.isSafeInteger(byteSize) || byteSize <= 0) throw new CaptureError('media-unavailable');
         const durationMs = await inspect(source.uri);
         if (!Number.isFinite(durationMs) || durationMs <= 0) throw new CaptureError('media-unavailable');
-        if (!final.exists) await source.move(final);
+        // A sibling rename checks the existing source, not a missing destination.
+        if (!final.exists) await source.rename(`${draft.id}.${draft.extension}`);
         if (!final.exists || final.size !== byteSize) throw new CaptureError('media-unavailable');
         return { durationMs, byteSize };
       } catch { throw new CaptureError('media-unavailable'); }
