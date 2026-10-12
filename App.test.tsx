@@ -8,6 +8,18 @@ import * as capture from './src/capture/ui/CaptureScreen';
 import { createProject } from './src/projects/project';
 import { id } from './test/ids';
 import { reviewStore } from './src/review/runtime';
+import { exportStore } from './src/export/runtime';
+
+let mockExportChanged: () => void;
+jest.mock('./src/export/runtime', () => ({ exportStore: {
+  getSnapshot: jest.fn().mockReturnValue({ project: null }),
+  subscribe: jest.fn((changed) => { mockExportChanged = changed; return () => undefined; }),
+  open: jest.fn(),
+} }));
+jest.mock('./src/export/ui/ExportScreen', () => {
+  const { Text } = jest.requireActual('react-native');
+  return { ExportScreen: jest.fn(() => <Text>Export screen</Text>) };
+});
 
 let mockReviewChanged: () => void;
 jest.mock('./src/review/runtime', () => ({ reviewStore: {
@@ -36,6 +48,7 @@ jest.mock('./src/capture/ui/CaptureScreen', () => {
 beforeEach(() => {
   jest.mocked(captureStore.getSnapshot).mockReturnValue({ ...captureStore.getSnapshot(), project: null });
   jest.mocked(reviewStore.getSnapshot).mockReturnValue({ ...reviewStore.getSnapshot(), project: null });
+  jest.mocked(exportStore.getSnapshot).mockReturnValue({ ...exportStore.getSnapshot(), project: null });
 });
 
 jest.mock('./src/projects/runtime', () => ({ newId: jest.fn(), projectStore: {} }));
@@ -47,7 +60,7 @@ test('mounts the workspace with a stable store and native ID factory', async () 
   await render(<App />);
   expect(screen.getByText('Project workspace')).toBeVisible();
   expect(workspace.ProjectWorkspace).toHaveBeenCalledWith(
-    { store: projectStore, newId, onCapture: expect.any(Function), onReview: expect.any(Function) },
+    { store: projectStore, newId, onCapture: expect.any(Function), onReview: expect.any(Function), onExport: expect.any(Function) },
     undefined,
   );
 });
@@ -93,4 +106,13 @@ test('opens saved review from the workspace in the stable editor boundary', asyn
     mockReviewChanged();
   });
   expect(screen.getByText('Review screen')).toBeVisible();
+});
+test('opens export from the committed workspace through its stable store', async () => {
+  await render(<App />); const project = createProject(id(1), 'P');
+  jest.mocked(workspace.ProjectWorkspace).mock.calls[0]![0].onExport(project);
+  expect(exportStore.open).toHaveBeenCalledWith(project);
+  await act(async () => {
+    jest.mocked(exportStore.getSnapshot).mockReturnValue({ ...exportStore.getSnapshot(), project }); mockExportChanged();
+  });
+  expect(screen.getByText('Export screen')).toBeVisible();
 });

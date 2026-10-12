@@ -4,8 +4,9 @@ import { ReviewError } from './ReviewError';
 import { ReviewStore } from './ReviewStore';
 import { SqliteAnnotationRepository } from './SqliteAnnotationRepository';
 
+export const annotationRepository = new SqliteAnnotationRepository(privateDatabaseOpener('annotations.db'));
 export const reviewStore = new ReviewStore(recordingRepository,
-  new SqliteAnnotationRepository(privateDatabaseOpener('annotations.db')),
+  annotationRepository,
   async (record) => {
     try { return await media.resolveSaved(record); }
     catch { throw new ReviewError('media-unavailable'); }

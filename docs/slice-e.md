@@ -6,7 +6,7 @@ Fetched master `b1aadebcaa8db948f1556c57c8730b03b1682a48`, the parent's PR #5 me
 
 Scope: single-recording and project video/annotation export, visible pending/interrupted/incomplete data, source-preserving cancellation/failure/retry and explicit prepared versus share-returned states. Unit tests only; no native/device/integration execution, backend, authentication, uploader, import, paid services, signing or release.
 
-**Status: schema/packaging proposal for the parent's Astra architecture check. No encoder is implemented yet.** The cloud-thread reply tool is not exposed in this execution session; the proposal is delivered through the draft PR and handoff so the parent can review it. Independent API investigation, sharing-boundary units and dependency setup can proceed while that check is pending.
+**Architecture approved:** the parent reports Astra approval of exact proposal checkpoint `2f1c0f877b62a106b40df42a45bbe60136033232`, with no required changes. Implementation continues from that clean revision on the same branch/draft PR #6; fetched master remains `b1aadebcaa8db948f1556c57c8730b03b1682a48`. Required references were read at this exact starting revision. Encoder, coordinator, adapters and UI implementation is now in progress; final independent exact-SHA acceptance review remains separate.
 
 ## Proposed minimal contract
 
