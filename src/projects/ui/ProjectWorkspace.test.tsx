@@ -82,6 +82,21 @@ test('creates/renames a project, adds/renames/archives/restores labels with stab
   await user.press(screen.getByRole('button', { name: 'Open Renamed' }));
   expect(screen.getByRole('header', { name: 'Renamed' })).toBeVisible();
 });
+
+test('opens capture with the committed project and locks it while a name editor is open', async () => {
+  const { repository, store, newId } = fixture();
+  const project = createProject(id(1), 'Capture project');
+  repository.load.mockResolvedValueOnce({ projects: [project], pending: [] });
+  const capture = jest.fn(); const user = userEvent.setup();
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={capture} />);
+  await user.press(screen.getByRole('button', { name: 'Open Capture project' }));
+  await user.press(screen.getByRole('button', { name: 'Record video' }));
+  expect(capture).toHaveBeenCalledWith(project);
+  await user.press(screen.getByRole('button', { name: 'Rename project' }));
+  expect(screen.getByRole('button', { name: 'Record video' })).toBeDisabled();
+  await user.press(screen.getByRole('button', { name: 'Record video' }));
+  expect(capture).toHaveBeenCalledTimes(1);
+});
 test('failed saves lock the retained draft and retry the identical request without regenerating IDs', async () => {
   const { repository, store, newId } = fixture();
   const user = userEvent.setup();

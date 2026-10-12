@@ -1,12 +1,13 @@
 import { captureFixture, deferred } from '../../test/captureFixture';
 import { id } from '../../test/ids';
 import { CaptureError } from './CaptureError';
-import type { MediaPosition } from './recording';
+import { createRecordingDraft, type MediaPosition } from './recording';
 
 beforeEach(() => { jest.spyOn(console, 'info').mockImplementation(() => undefined); });
 
 test('loads local records, locks navigation while busy and permits facing selection only before capture', async () => {
   const f = captureFixture();
+  expect([...f.store.activeLabels()]).toEqual([]);
   expect(f.store.canClose()).toBe(false);
   expect(f.store.close()).toBe(false);
   expect(await f.store.load()).toBe(false);
@@ -138,10 +139,16 @@ test('same-recording native toggle result requested before Stop is preserved eve
 });
 
 test('unavailable/regressing positions do not add a toggle and a later valid position can recover', async () => {
-  const f = captureFixture(); await f.begin();
+  const f = captureFixture();
+  const old = createRecordingDraft(id(9), f.project, 'back', 'mov'); f.pending.set(old.id, old);
+  await f.begin();
+  expect(await f.store.toggle(id(4))).toBe(false);
+  expect(f.store.getSnapshot().error).toBe('invalid-data');
+  expect(f.camera.position).toHaveBeenCalledTimes(1);
   f.camera.position.mockRejectedValueOnce(new CaptureError('clock-unavailable'));
   expect(await f.store.toggle(id(2))).toBe(false);
   expect(f.store.getSnapshot()).toMatchObject({ error: 'clock-unavailable', draft: { events: [] } });
+  expect(f.store.getSnapshot().pending.find((value) => value.id === old.id)).toBe(old);
   expect(await f.store.toggle(id(2))).toBe(true);
   f.camera.position.mockResolvedValueOnce({ recordingId: id(10), mediaMs: 99, source: 'avcapture-recorded-duration' });
   expect(await f.store.toggle(id(3))).toBe(false);
@@ -149,6 +156,10 @@ test('unavailable/regressing positions do not add a toggle and a later valid pos
   expect(await f.store.toggle(id(3))).toBe(true);
   await f.store.stop(); await f.end();
   expect(f.store.getSnapshot().lastSaved?.events).toHaveLength(2);
+  expect(f.store.getSnapshot()).toMatchObject({ error: 'annotation-incomplete', lastSaved: { annotationFailures: [
+    { labelId: id(2), afterEvent: 0, reason: 'clock-unavailable' },
+    { labelId: id(3), afterEvent: 1, reason: 'invalid-timing' },
+  ] } });
 });
 
 test('failed annotation checkpoint retains intended event, stops capture and waits for the pending write before final save', async () => {
@@ -264,8 +275,11 @@ test('load and preview errors offer safe retry; preview failure during capture r
   expect(f.store.getSnapshot().lastSaved?.termination).toBe('interrupted');
 });
 
-test('consecutive checkpoint failures retain the latest event and block navigation/new capture until it is staged', async () => {
-  const f = captureFixture(); await f.begin();
+test('consecutive checkpoint failures block recovery of another pending recording until the current intended event is staged', async () => {
+  const f = captureFixture();
+  const old = createRecordingDraft(id(9), f.project, 'back', 'mov');
+  f.pending.set(old.id, old);
+  await f.begin();
   f.repository.checkpoint.mockRejectedValueOnce(new Error('toggle write failed')).mockRejectedValueOnce(new Error('end checkpoint failed'));
   expect(await f.store.toggle(id(2))).toBe(false);
   await f.end();
@@ -273,8 +287,19 @@ test('consecutive checkpoint failures retain the latest event and block navigati
   expect(f.store.getSnapshot().draft?.events).toHaveLength(1);
   expect(f.store.close()).toBe(false);
   expect(f.store.newRecording()).toBe(false);
+  expect(f.store.canRecover(old.id)).toBe(false);
+  expect(f.store.canRecover(id(10))).toBe(true);
+  const before = f.store.getSnapshot();
+  expect(await f.store.recover(old.id)).toBe(false);
+  expect(f.store.getSnapshot()).toBe(before);
+  expect(f.media.promote).not.toHaveBeenCalled();
+  expect(f.pending.get(old.id)).toBe(old);
   expect(await f.store.recover(id(10))).toBe(true);
   expect(f.store.getSnapshot().lastSaved?.events).toHaveLength(1);
+  expect(f.store.canRecover(old.id)).toBe(true);
+  expect(await f.store.recover(old.id)).toBe(true);
+  expect(f.saved.get(id(10))?.events).toHaveLength(1);
+  expect(f.saved.size).toBe(2);
   expect(f.store.close()).toBe(true);
 });
 
@@ -311,4 +336,65 @@ test('known pre-start failure stays pending without assuming finalized output, a
   expect(await start).toBe(false);
   expect(cancelled.camera.record).not.toHaveBeenCalled();
   expect(cancelled.store.getSnapshot().pending).toHaveLength(1);
+});
+
+test('an existing pending recording remains intact when a new recording checkpoints a label', async () => {
+  const f = captureFixture();
+  const old = createRecordingDraft(id(9), f.project, 'back', 'mov');
+  f.pending.set(old.id, old);
+  await f.begin(); await f.store.toggle(id(2));
+  expect(f.store.getSnapshot().pending.find((value) => value.id === old.id)).toBe(old);
+  await f.store.stop(); await f.end();
+  const saved = f.store.getSnapshot();
+  f.store.previewFailed();
+  expect(f.store.getSnapshot()).toBe(saved);
+});
+
+test('a native label sample that fails after Stop persists an untimed intent and visibly marks saved annotations incomplete', async () => {
+  const f = captureFixture(); await f.begin();
+  const sampling = deferred<MediaPosition>(); f.camera.position.mockReturnValueOnce(sampling.promise);
+  const toggle = f.store.toggle(id(2)); await f.store.stop();
+  sampling.reject(new CaptureError('clock-unavailable'));
+  expect(await toggle).toBe(false);
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'stopping', error: 'clock-unavailable' });
+  await f.end();
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'saved', error: 'annotation-incomplete', lastSaved: {
+    events: [], intervals: [], annotationFailures: [{ labelId: id(2), afterEvent: 0, reason: 'clock-unavailable' }],
+  } });
+  expect(f.saved.get(id(10))?.annotationFailures).toEqual([{ labelId: id(2), afterEvent: 0, reason: 'clock-unavailable' }]);
+});
+
+test('finalization waits for a failing outstanding native sample and preserves its failure through relaunch', async () => {
+  const f = captureFixture(); await f.begin();
+  const sampling = deferred<MediaPosition>(); f.camera.position.mockReturnValueOnce(sampling.promise);
+  const toggle = f.store.toggle(id(3)); await f.store.stop();
+  const ending = f.end(); await Promise.resolve();
+  expect(f.store.getSnapshot().phase).toBe('saving');
+  expect(f.media.promote).not.toHaveBeenCalled();
+  sampling.reject(new CaptureError('invalid-timing'));
+  expect(await toggle).toBe(false); await ending;
+  const saved = f.saved.get(id(10))!;
+  expect(saved).toMatchObject({ events: [], intervals: [], annotationFailures: [{ labelId: id(3), afterEvent: 0, reason: 'invalid-timing' }] });
+  expect(f.store.getSnapshot().error).toBe('annotation-incomplete');
+  const relaunched = captureFixture(); relaunched.saved.set(saved.id, saved);
+  await relaunched.ready();
+  expect(relaunched.store.getSnapshot().saved[0]?.annotationFailures).toEqual(saved.annotationFailures);
+});
+
+test('failed checkpoints of an untimed intent block other recovery and retain that intent for a same-recording retry', async () => {
+  const f = captureFixture();
+  const old = createRecordingDraft(id(9), f.project, 'back', 'mov'); f.pending.set(old.id, old);
+  await f.begin();
+  f.camera.position.mockRejectedValueOnce(new CaptureError('clock-unavailable'));
+  f.repository.checkpoint.mockRejectedValueOnce(new Error('intent checkpoint failed')).mockRejectedValueOnce(new Error('final checkpoint failed'));
+  expect(await f.store.toggle(id(2))).toBe(false);
+  await f.end();
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'failed', draft: { annotationFailures: [{ labelId: id(2), afterEvent: 0 }] } });
+  expect(f.pending.get(id(10))?.annotationFailures).toEqual([]);
+  expect(f.store.close()).toBe(false);
+  expect(f.store.newRecording()).toBe(false);
+  expect(await f.store.recover(old.id)).toBe(false);
+  expect(await f.store.recover(id(10))).toBe(true);
+  expect(f.store.getSnapshot().error).toBe('annotation-incomplete');
+  expect(f.saved.get(id(10))?.annotationFailures).toHaveLength(1);
 });

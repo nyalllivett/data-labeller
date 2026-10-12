@@ -42,7 +42,7 @@ final class CaptureMediaPolicyTests: XCTestCase {
     for seconds in [0, -1, Double.nan, Double.infinity] {
       XCTAssertThrowsError(try reportedRecordingPosition(requestedId: "A", currentId: "A", seconds: seconds, isRecording: true)) { self.assertFixed($0) }
     }
-    for id: String? in [nil, "B"] {
+    for id in [nil, "B"] as [String?] {
       XCTAssertThrowsError(try reportedRecordingPosition(requestedId: "A", currentId: id, seconds: 1, isRecording: true)) { self.assertFixed($0) }
     }
     XCTAssertThrowsError(try reportedRecordingPosition(requestedId: "A", currentId: "A", seconds: 1, isRecording: false)) { self.assertFixed($0) }

@@ -9,13 +9,14 @@ import { LabelRow } from './LabelRow';
 
 const errors = {
   unavailable: 'Capture or local storage is unavailable. Keep the app data and retry.',
-  'clock-unavailable': 'A video position is not available for this label change. It was not added; try again or Stop.',
+  'clock-unavailable': 'A video position is not available for this label change. Its untimed intent was retained; try again or Stop.',
   'invalid-timing': 'Video timing could not be confirmed. Video and pending annotations are retained for recovery.',
   'checkpoint-failed': 'Annotations could not be saved. Stopping capture to preserve the pending change.',
   'stop-failed': 'Stop could not be confirmed. Retry Stop; the recording may still be running.',
   'media-unavailable': 'Video is missing, unfinished or unavailable. Check free storage and retry saving. Pending data has been retained.',
   'invalid-data': 'Recording data could not be read safely. Keep the app data and retry; it has not been reset.',
-  'capture-unfinalized': 'Video finalization could not be confirmed. Keep the app data and restart the app before recovering this recording.',
+  'capture-unfinalized': 'Video finalization could not be confirmed. Keep the app data and fully close and reopen the app before recovering this recording.',
+  'annotation-incomplete': 'Video was saved, but at least one label change could not be timed. Annotations are incomplete; the failed intent was retained without a timestamp.',
 };
 const messages = {
   closed: '', loading: 'Loading recordings…', ready: 'Ready to record',
@@ -35,16 +36,19 @@ export function CaptureScreen({ store, camera, permissions = cameraPermissions }
     catch { setPermissionError(true); }
     finally { setAsking(false); }
   }, [permissions]);
-  useEffect(() => { void checkPermission(false); }, [checkPermission]);
+  useEffect(() => {
+    void permissions.get().then(setPermission, () => setPermissionError(true));
+  }, [permissions]);
   const attach = useCallback((value: CameraView | null) => camera.attach(value), [camera]);
   const live = ['starting', 'recording', 'stopping'].includes(state.phase);
   const preview = state.phase === 'ready' || live;
   useEffect(() => {
     const listener = AppState.addEventListener('change', (next) => {
       if (next !== 'active') void store.stop('interrupted');
+      else void checkPermission(false);
     });
     return () => { listener.remove(); void store.stop('interrupted'); };
-  }, [store]);
+  }, [store, checkPermission]);
   useEffect(() => {
     if (state.phase !== 'starting') return;
     void store.checkPosition();
@@ -64,7 +68,7 @@ export function CaptureScreen({ store, camera, permissions = cameraPermissions }
           <View style={styles.facing}>
             {(['back', 'front'] as const).map((facing) => (
               <Pressable key={facing} accessibilityRole="radio" accessibilityLabel={facing === 'back' ? 'Rear camera' : 'Front camera'}
-                accessibilityState={{ checked: state.facing === facing }} onPress={() => store.setFacing(facing)} style={styles.choice}>
+                accessibilityState={{ checked: state.facing === facing }} onPress={() => store.setFacing(facing)} style={[styles.choice, state.facing === facing && styles.selected]}>
                 <Text style={styles.text}>{facing === 'back' ? 'Rear' : 'Front'}</Text>
               </Pressable>
             ))}
@@ -72,7 +76,7 @@ export function CaptureScreen({ store, camera, permissions = cameraPermissions }
           </View>
         )}
       </View>
-      {preview && !permission && <Text style={styles.text}>Checking camera permission…</Text>}
+      {preview && !permission && !permissionError && <Text style={styles.text}>Checking camera permission…</Text>}
       {preview && permissionError && <View style={styles.header}>
         <Text accessibilityRole="alert" style={styles.error}>Camera permission could not be checked. Try again.</Text>
         <Button title="Retry camera permission" disabled={asking || live} onPress={() => { void checkPermission(false); }} />
@@ -96,12 +100,12 @@ export function CaptureScreen({ store, camera, permissions = cameraPermissions }
           {state.pending.map((draft) => (
             <View key={draft.id} style={styles.pending}>
               <Text style={styles.text}>Pending recording: {draft.labels.map((label) => label.name).join(', ') || 'unlabelled'}</Text>
-              <Button title="Retry saving pending recording" disabled={state.phase === 'unfinalized'} onPress={() => { void store.recover(draft.id); }} />
+              <Button title="Retry saving pending recording" disabled={!store.canRecover(draft.id)} onPress={() => { void store.recover(draft.id); }} />
             </View>
           ))}
           {state.saved.map((recording, index) => (
             <Text key={recording.id} style={styles.text}>
-              Recording {index + 1}: {(recording.durationMs / 1000).toFixed(2)} seconds, {recording.intervals.length} intervals{recording.termination === 'interrupted' ? ', interrupted' : ''}. Saved locally.
+              Recording {index + 1}: {(recording.durationMs / 1000).toFixed(2)} seconds, {recording.intervals.length} intervals{recording.termination === 'interrupted' ? ', interrupted' : ''}{recording.annotationFailures.length ? ', incomplete annotations' : ''}. Saved locally.
             </Text>
           ))}
           {['saved', 'failed'].includes(state.phase) && state.draft && <Button title="New recording (keep pending data)" disabled={!store.canClose()} onPress={store.newRecording} />}
@@ -111,7 +115,7 @@ export function CaptureScreen({ store, camera, permissions = cameraPermissions }
       )}
       <View style={styles.footer}>
         <LabelRow labels={state.draft?.labels ?? state.project?.labels.filter((label) => !label.archived) ?? []}
-          active={store.activeLabels()} disabled={state.phase !== 'recording' || state.labelBusy} toggle={(id) => { void store.toggle(id); }} />
+          active={live ? store.activeLabels() : new Set()} disabled={state.phase !== 'recording' || state.labelBusy} toggle={(id) => { void store.toggle(id); }} />
         {live && <View style={styles.stop}><Button title={state.error === 'stop-failed' ? 'Retry Stop' : 'Stop'}
           disabled={state.phase === 'stopping' && state.error !== 'stop-failed'} onPress={() => { void store.stop(); }} /></View>}
       </View>
@@ -128,6 +132,7 @@ const styles = StyleSheet.create({
   error: { color: '#ffb3ad', fontSize: 16 },
   facing: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   choice: { padding: 12, backgroundColor: '#273449', borderRadius: 8 },
+  selected: { borderWidth: 2, borderColor: '#68dbac' },
   preview: { flex: 1, minHeight: 120 },
   history: { flex: 1 },
   pending: { gap: 8, paddingVertical: 12 },

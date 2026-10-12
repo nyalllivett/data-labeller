@@ -6,6 +6,7 @@ export type PositionSource = 'avcapture-recorded-duration' | 'camerax-recording-
 export type MediaPosition = Readonly<{ recordingId: string; mediaMs: number; source: PositionSource }>;
 export type ToggleEvent = Readonly<{ labelId: string; mediaMs: number; source: PositionSource }>;
 export type Interval = Readonly<{ labelId: string; startMs: number; endMs: number }>;
+export type AnnotationFailure = Readonly<{ labelId: string; afterEvent: number; reason: 'clock-unavailable' | 'invalid-timing' }>;
 export type RecordingDraft = Readonly<{
   id: string;
   projectId: string;
@@ -14,6 +15,7 @@ export type RecordingDraft = Readonly<{
   extension: 'mov' | 'mp4';
   labels: readonly Readonly<{ id: string; name: string }>[];
   events: readonly ToggleEvent[];
+  annotationFailures: readonly AnnotationFailure[];
   termination: 'stopped' | 'interrupted' | null;
 }>;
 export type SavedRecording = RecordingDraft &
@@ -37,7 +39,7 @@ export function createRecordingDraft(
   return decodeDraft(JSON.stringify({
     id, projectId: snapshot.id, projectName: snapshot.name, facing, extension,
     labels: snapshot.labels.filter((label) => !label.archived).map(({ id, name }) => ({ id, name })),
-    events: [], termination: null,
+    events: [], annotationFailures: [], termination: null,
   }));
 }
 
@@ -109,10 +111,18 @@ export function decodeDraft(body: string): RecordingDraft {
     let draft: RecordingDraft = {
       id: value.id, projectId: project.id, projectName: project.name, facing: value.facing,
       extension: value.extension, labels: project.labels.map(({ id, name }) => Object.freeze({ id, name })),
-      events: [], termination: null,
+      events: [], annotationFailures: [], termination: null,
     };
     for (const event of value.events) draft = toggleLabel(draft, event.labelId, { ...event, recordingId: draft.id });
-    return Object.freeze({ ...draft, labels: Object.freeze(draft.labels), events: Object.freeze(draft.events), termination: value.termination });
+    const failures = value.annotationFailures === undefined ? [] : value.annotationFailures;
+    if (!Array.isArray(failures)) throw new CaptureError('invalid-data');
+    const annotationFailures = failures.map((failure) => {
+      if (!draft.labels.some((label) => label.id === failure.labelId) ||
+          !Number.isSafeInteger(failure.afterEvent) || failure.afterEvent < 0 || failure.afterEvent > draft.events.length ||
+          (failure.reason !== 'clock-unavailable' && failure.reason !== 'invalid-timing')) throw new CaptureError('invalid-data');
+      return Object.freeze({ labelId: failure.labelId, afterEvent: failure.afterEvent, reason: failure.reason });
+    });
+    return Object.freeze({ ...draft, labels: Object.freeze(draft.labels), events: Object.freeze(draft.events), annotationFailures: Object.freeze(annotationFailures), termination: value.termination });
   } catch {
     throw new CaptureError('invalid-data');
   }

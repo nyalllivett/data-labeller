@@ -85,7 +85,8 @@ export class SqliteRecordingRepository implements RecordingRepository {
     await db.withExclusiveTransactionAsync(async (txn) => {
       const row = await txn.getFirstAsync<Row>('SELECT id, project_id, body FROM drafts WHERE id = ?', id);
       if (!row) return;
-      if (this.decode(row, decodeDraft).events.length) throw new CaptureError('invalid-data');
+      const draft = this.decode(row, decodeDraft);
+      if (draft.events.length || draft.annotationFailures.length) throw new CaptureError('invalid-data');
       await txn.runAsync('DELETE FROM drafts WHERE id = ?', id);
     });
   }

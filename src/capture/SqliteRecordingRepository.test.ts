@@ -122,4 +122,15 @@ test('cancellation deletes only its empty unstarted draft; missing/previously ca
   await f.repository.checkpoint({ ...f.draft, events: [{ labelId: id(2), mediaMs: 100, source: 'avcapture-recorded-duration' }] });
   await expect(f.repository.cancelUnstarted(f.draft.id)).rejects.toThrow('invalid-data');
   expect(f.db.drafts.size).toBe(1);
+  await f.repository.checkpoint({ ...f.draft, annotationFailures: [{ labelId: id(2), afterEvent: 0, reason: 'clock-unavailable' }] });
+  await expect(f.repository.cancelUnstarted(f.draft.id)).rejects.toThrow('invalid-data');
+  expect((await f.repository.load(f.draft.projectId)).pending[0]?.annotationFailures).toHaveLength(1);
+});
+
+test('an existing supported schema is read without rerunning its migration or replacing saved records', async () => {
+  const f = fixture(); f.db.version = 1;
+  f.db.recordings.set(f.recording.id, { id: f.recording.id, project_id: f.recording.projectId, body: JSON.stringify(f.recording) });
+  const exec = jest.spyOn(f.db, 'execAsync');
+  expect(await f.repository.load(f.draft.projectId)).toEqual({ pending: [], saved: [f.recording] });
+  expect(exec.mock.calls).toEqual([['PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;']]);
 });

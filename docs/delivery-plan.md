@@ -13,9 +13,9 @@ Keep safeguards proportional: use the simplest correct design for credible user 
 - Project rules and V1 scope: established at `89974c5871b81c0ea673e9696f750afa8c352fd8`.
 - Slice A: independently reviewed at `a6acb30c3c74aa5b43b1e5fa9f70839db95b97ad` and merged by the parent as `967b7e6856fb3759e9565a4c0b3501a145f4c2d0` ([PR #2](https://github.com/nyalllivett/data-labeller/pull/2)).
 - Slice B: independently approved at `e984d51d19a7aaa22f655725a604961006333867` and parent-merged as `dabff1cb98467d2f6c39c8992f23e2f708c42057` in [PR #3](https://github.com/nyalllivett/data-labeller/pull/3), with documented native execution limits. See [slice B decisions and checks](slice-b.md).
-- Slice C: in progress on `0004-capture-labels`; [capture decisions and checkpoint status](slice-c.md). Final verification, independent exact-commit review and authorized merge remain pending. D–E remain unimplemented.
+- Slice C: implemented on `0004-capture-labels` for draft review; [capture decisions and verification](slice-c.md). JavaScript unit/type/lint and non-device bundle/config checks pass; native unit execution and device acceptance remain unverified. Independent exact-commit review and authorized merge remain pending. D–E remain unimplemented.
 - Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
-- Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Project metadata persistence/reconciliation is implemented in B with controlled unit tests; native durability is unverified. Media promotion/reconciliation remains proposed for C.
+- Native SDK/timing feasibility: official docs and installed camera/playback sources inspected. C adds a small pinned native route for reported media-duration samples, without a JS start offset; physical-tap lag remains unquantified and acceptance unverified. Both platform bundles, generation and source-build/autolinking selection are checked. Project metadata and coordinated recording/media save/recovery are implemented with controlled units; actual native durability is unverified.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
 
 ## Planned slices
@@ -46,7 +46,7 @@ Implementation status: independently reviewed and parent-merged in PR #3, includ
 
 ### C. Capture and independent label toggles
 
-Implementation status: in progress on `0004-capture-labels`; final checks and review pending. Reported native media-duration samples are provisional, with unquantified tap lag and no elapsed-JS extrapolation. Native/unit/device limits are tracked in [slice-c.md](slice-c.md).
+Implementation status: capture/independent toggles, fixed Stop, snapshots, known persistent staging and local media/metadata save/recovery are implemented on `0004-capture-labels`. JavaScript checks and both bundles/config/autolinking pass; draft exact-commit review/merge remain pending. Reported native media-duration samples are provisional, with unquantified tap lag and no elapsed-JS extrapolation. Native unit sources exist but have not executed. Details and limits are in [slice-c.md](slice-c.md).
 
 - Implement front/rear in-app capture through a narrow media adapter.
 - Implement the bottom horizontal label row, active highlighting, and a separate fixed Stop control.

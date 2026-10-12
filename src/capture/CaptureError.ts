@@ -6,6 +6,7 @@ export type CaptureErrorCode =
   | 'stop-failed'
   | 'media-unavailable'
   | 'capture-unfinalized'
+  | 'annotation-incomplete'
   | 'invalid-data';
 
 export class CaptureError extends Error {

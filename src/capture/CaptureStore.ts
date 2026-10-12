@@ -146,6 +146,10 @@ export class CaptureStore {
 
   toggle = (labelId: string): Promise<boolean> => {
     if (this.state.phase !== 'recording' || this.state.labelBusy) return Promise.resolve(false);
+    if (!this.state.draft!.labels.some((label) => label.id === labelId)) {
+      this.update({ error: 'invalid-data' });
+      return Promise.resolve(false);
+    }
     this.update({ labelBusy: true, error: null });
     const action = this.acceptToggle(labelId);
     this.toggleWork = action;
@@ -155,7 +159,8 @@ export class CaptureStore {
     const draft = this.state.draft!;
     try {
       const position = await this.camera.position(draft.id);
-      if (this.state.draft?.id !== draft.id || !['recording', 'stopping', 'saving'].includes(this.state.phase)) return false;
+      // Finish awaits this operation before replacing the draft. The native
+      // sample's recording identity is validated by toggleLabel.
       const next = toggleLabel(draft, labelId, position);
       this.uncheckpointed = true;
       this.update({ draft: next });
@@ -171,7 +176,22 @@ export class CaptureStore {
       this.update({ pending: this.state.pending.map((item) => item.id === next.id ? next : item) });
       return true;
     } catch (error) {
-      if (this.state.phase === 'recording') this.update({ error: captureError(error).code });
+      const code = captureError(error).code;
+      const next: RecordingDraft = { ...draft, annotationFailures: [...draft.annotationFailures, {
+        labelId, afterEvent: draft.events.length, reason: code === 'invalid-timing' ? 'invalid-timing' : 'clock-unavailable',
+      }] };
+      this.uncheckpointed = true;
+      this.update({ draft: next, error: code });
+      emitDiagnostic('capture.failed');
+      try {
+        await this.repository.checkpoint(next);
+        this.uncheckpointed = false;
+        this.update({ pending: this.state.pending.map((item) => item.id === next.id ? next : item) });
+      } catch {
+        this.update({ error: 'checkpoint-failed' });
+        emitDiagnostic('capture.checkpoint_failed');
+        void this.stop('interrupted');
+      }
       return false;
     } finally { this.update({ labelBusy: false }); }
   }
@@ -193,6 +213,7 @@ export class CaptureStore {
       await this.camera.stop(this.state.draft!.id);
       return true;
     } catch {
+      emitDiagnostic('capture.failed');
       if (this.cameraIssued) {
         this.stopSent = false;
         this.update({ error: 'stop-failed' });
@@ -214,11 +235,11 @@ export class CaptureStore {
 
   private async rejectedCapture(error: unknown): Promise<void> {
     this.cameraIssued = false;
+    emitDiagnostic('capture.failed');
     this.update({ phase: 'saving' });
     await this.toggleWork;
     if (captureError(error).code !== 'capture-unfinalized') {
       this.update({ phase: 'failed', error: captureError(error).code });
-      emitDiagnostic('capture.failed');
       return;
     }
     // iOS view cleanup can reject before its queued writer teardown finishes.
@@ -237,6 +258,7 @@ export class CaptureStore {
       return true;
     } catch {
       this.uncheckpointed = true;
+      emitDiagnostic('capture.checkpoint_failed');
       this.update({ phase: 'unfinalized', error: 'checkpoint-failed' });
       return false;
     }
@@ -252,7 +274,7 @@ export class CaptureStore {
       const media = await this.media.promote(draft);
       const saved = await this.repository.commit(finalizeRecording(draft, media));
       const workspace = await this.repository.load(draft.projectId);
-      this.update({ ...workspace, phase: 'saved', lastSaved: saved });
+      this.update({ ...workspace, phase: 'saved', lastSaved: saved, error: saved.annotationFailures.length ? 'annotation-incomplete' : null });
       emitDiagnostic('capture.saved');
       return true;
     } catch (error) {
@@ -263,12 +285,14 @@ export class CaptureStore {
   }
 
   recover = async (id: string): Promise<boolean> => {
-    if (!['ready', 'failed', 'saved'].includes(this.state.phase)) return false;
+    if (!this.canRecover(id)) return false;
     const draft = this.state.draft?.id === id ? this.state.draft : this.state.pending.find((item) => item.id === id);
     if (!draft) return false;
     this.update({ draft: { ...draft, termination: draft.termination ?? 'interrupted' } });
     return this.saveDraft();
   };
+  canRecover = (id: string): boolean =>
+    ['ready', 'failed', 'saved'].includes(this.state.phase) && (!this.uncheckpointed || this.state.draft?.id === id);
   newRecording = (): boolean => {
     if (!this.canClose()) return false;
     if (this.state.phase === 'failed' && !this.state.draft) return false;

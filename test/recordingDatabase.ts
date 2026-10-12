@@ -9,7 +9,7 @@ export class RecordingDatabase implements DatabasePort {
   recordings = new Map<string, Row>();
   inTransaction = false;
   fault: 'schema' | 'checkpoint' | 'insert' | 'delete' | 'after-commit' | 'snapshot' | null = null;
-  calls: Array<{ sql: string; values: unknown[]; transactional: boolean }> = [];
+  calls: { sql: string; values: unknown[]; transactional: boolean }[] = [];
 
   async execAsync(sql: string): Promise<void> {
     if (sql.includes('CREATE TABLE')) {

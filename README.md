@@ -14,9 +14,9 @@ Every change is made and committed on a numbered branch, independently reviewed,
 
 ## Current state
 
-Slice A is merged. Slice B adds project creation/rename and custom label add/rename/archive/restore with local SQLite metadata, recoverable save/retry states and submitted-change reconciliation. Recording, video review, annotation editing/Undo and export remain later slices. See the [slice B decisions and verification](docs/slice-b.md) and the [timing/media recovery investigation](docs/slice-a.md).
+Slices A and B are merged. Slice C adds front/rear pre-capture selection, silent video recording, independent overlapping live labels in a horizontal bottom row, fixed Stop, and coordinated local media/annotation save and recovery. It is implemented for draft review; native/device acceptance is unverified. Video review, annotation correction/Undo and export remain later slices. See [slice C decisions and verification](docs/slice-c.md), [slice B metadata decisions](docs/slice-b.md), and the [initial timing investigation](docs/slice-a.md).
 
-The baseline is Expo `57.0.27`, React Native `0.86.3`, React `19.2.3` and TypeScript `6.0.3`. The lockfile records exact installed versions. Camera/playback dependencies and native plugins are present for subsequent slices; this shell does not invoke them or request permissions. No backend, authentication, analytics uploader, cloud-build project or paid service is configured.
+The baseline is Expo `57.0.27`, React Native `0.86.3`, React `19.2.3` and TypeScript `6.0.3`. The lockfile records exact installed versions. Recording uses a small version-pinned Expo Camera `57.0.6` patch and the local CaptureMedia module. Camera permission is checked on entering capture and requested only through the user's Allow action; audio stays off. No permission was requested on an actual device in this cloud work. No backend, authentication, analytics uploader, cloud-build project or paid service is configured.
 
 ## Reproducible setup and cloud checks
 
@@ -36,9 +36,11 @@ EXPO_NO_TELEMETRY=1 EXPO_OFFLINE=1 CI=1 npx expo config --type introspect --json
 
 The bundle check exports iOS and Android JavaScript/Hermes bytecode into ignored `dist/`; it does not publish anything. Prebuild generates ignored native projects without installing Pods, compiling, signing or launching a device. Native directories are generated from app configuration and dependencies; keep persistent customizations in config/plugins rather than editing generated files.
 
-The JavaScript unit suite uses controlled native doubles. It checks project/name/label rules, stable IDs, archive/restore, UI behavior, loading/save/failure states, staged operations, transactional rollback, ambiguous completion, same-request retry, relaunch reconciliation, conflicts, corruption, schema guards, native-preparation coordination and exception sanitization. An unconfirmed discard locks the other pending requests until its outcome is confirmed, including confirmations already opened. No integration suite is included. Types check application and test files under strict settings; lint rejects warnings.
+The JavaScript unit suite uses controlled native/filesystem/transaction doubles. It checks project/name/label rules and UI, capture/Stop transitions, media-position validation, overlaps/gaps, historical names, checkpoints, rollback, ambiguous save completion, retry/relaunch, schema/corruption, permissions, native preparation and exception sanitization. It also checks the patched JS camera forwarding with a controlled native ref. The final slice C suite has 23 suites / 207 tests; native Swift/Kotlin is not included in JS coverage. No integration suite is included. Types check application/test files strictly; lint rejects warnings.
 
-In this sandbox, npm's default home cache is not writable. Prefix npm/npx commands with `npm_config_cache=/tmp/data-labeller-npm`, or export that variable. Expo's online compatibility lookup is blocked by the proxy; offline checks use the version table shipped with the installed SDK and explicitly warn that online validation is unavailable. See [slice B verification](docs/slice-b.md#verification) for exact outcomes and limitations.
+`npm ci` checks the exact camera version and applies `patches/expo-camera+57.0.6.patch`; do not omit development dependencies or installation scripts. Both platforms explicitly build Expo Camera from source to include these methods. A new camera version requires revisiting the patch and timing contract. Installed additions are FileSystem `57.0.7` and development-only patch-package `8.0.1`.
+
+In this sandbox, npm's default home cache is not writable. Prefix npm/npx commands with `npm_config_cache=/tmp/data-labeller-npm`, or export that variable. Expo's online compatibility lookup is blocked by the proxy; offline checks use the version table shipped with the installed SDK and explicitly warn that online validation is unavailable. See [slice C verification](docs/slice-c.md#verification) for passed/failed/not-run outcomes.
 
 For additional native registration/configuration checks without compiling or launching a device:
 
@@ -48,22 +50,28 @@ npx expo-modules-autolinking resolve --platform android --json
 EXPO_NO_TELEMETRY=1 CI=1 npx --yes expo-doctor@1.20.4
 ```
 
-The local `PrivateStorage` Expo module must be included in a rebuilt development client. The old slice A client cannot open the new workspace. Storage preparation verifies iOS backup exclusion or selects Android's no-backup directory before SQLite opens; failure blocks opening and offers Retry. Mocked tests/autolinking do not establish actual filesystem, SQLite, backup or device-transfer behavior. Do not uninstall to resolve a storage error: the local-only database has no cloud recovery copy.
+The local PrivateStorage and CaptureMedia modules and patched camera must be included in a rebuilt development client. Older A/B clients cannot provide the capture contract. Storage preparation verifies iOS backup exclusion or selects Android's no-backup directory before databases/media open; failure blocks opening and offers Retry. Mocked tests/autolinking do not establish actual filesystem, SQLite, backup or device-transfer behavior. Do not uninstall to resolve a storage error: the local-only data has no cloud recovery copy.
 
 The native policy helpers also have controlled-filesystem unit test sources: a Foundation-only Swift Package XCTest target (macOS with Swift 5.9+) and an Android local JVM/JUnit target. Both target the same helper sources used by the Expo module. On suitable hosts, from the repository root:
 
 ```sh
 swift test --package-path modules/private-storage
+swift test --package-path modules/capture-media
 # After the documented Android prebuild, with the Android SDK/JDK installed:
 cd android
 ./gradlew :private-storage:testDebugUnitTest
+./gradlew :capture-media:testDebugUnitTest
 ```
 
-These targets require no device, emulator or signing. They have **not run in this cloud environment**: Swift is absent; Android's Gradle wrapper cannot resolve `services.gradle.org`, and the Android SDK/Kotlin toolchain is absent. The JUnit test dependency is declared, with resolution unverified. Test sources cover creation/existing directories, verification, missing context, backup-exclusion failures and fixed error normalization; their execution is a separate outstanding check from deferred device QA. See [native test details](docs/slice-b.md#native-policy-unit-targets).
+These targets require no device, emulator or signing. They have **not run in this cloud environment**: Swift is absent; Android's Gradle wrapper cannot resolve `services.gradle.org`, and the Android SDK/Kotlin toolchain is absent. JUnit resolution is unverified. Shared native sources cover storage policy plus recording identity/position, native startup Stop, output selection, video-reader failures/cleanup and sanitized errors. Their execution is a separate outstanding check from deferred device QA. See [storage unit details](docs/slice-b.md#native-policy-unit-targets) and [capture verification](docs/slice-c.md#verification).
 
-Names are trimmed Unicode strings without control characters, with no fixed length/count caps. Duplicate names are allowed and identifiers remain stable. Archiving retains labels; restoring reuses the ID. Submitted saves use one immutable request ID for retry, and conflicts preserve the saved revision and pending change. Unsaved typing and a submission that never staged cannot survive process death. “Saved locally” appears only after the repository confirms commit and reloads the committed metadata; no recording/media Saved state exists yet.
+Names are trimmed Unicode strings without control characters, with no fixed length/count caps. Duplicate names are allowed and IDs remain stable. Recordings snapshot project/active label names; later rename/archive leaves that historical identity/name linkage intact. Archive/restore retains label identity. Project retries retain submitted intent, and an unconfirmed discard locks other pending requests until resolved. Unsaved typing and explicitly failed/uncommitted checkpoints cannot be promised across process death.
 
-The startup privacy adapter sanitizes values routed through React Native's pinned exception manager before application import. Fixed local events include storage phase/failure codes. Direct console/native-originated reports, early startup exceptions and development tooling remain outside that bound; no remote uploader is configured. Preserve those limits when debugging with private data.
+Capture writes directly to a pre-associated private persistent staging path. Confirmed finalization, video inspection and media promotion precede the recording/annotation metadata commit and “Saved locally.” Same-ID retry/relaunch preserves pending data and avoids duplicate saves. Interrupted saved clips are identified. A failed annotation checkpoint blocks Back, New recording and recovery of another recording until its sole in-memory copy is staged. When native rejection leaves writer finalization unknown, save only the pending annotations, then fully close/reopen the app before file recovery; JavaScript refresh is insufficient. Unfinished/unreadable video remains pending.
+
+Live labels use native reported media positions with unquantified tap lag, including cached Android status age. No JavaScript start offset or elapsed-time extrapolation is used. Saved events retain source provenance and unknown lag; intervals are half-open and can overlap, with unlabelled gaps distinct from negatives. Equal sampled times are retained without a minimum duration. Failed label samples retain an untimed intent and visibly mark saved annotations incomplete, including after relaunch. Device timing measurements remain necessary; future correction does not establish capture accuracy.
+
+The startup privacy adapter sanitizes values routed through React Native's pinned exception manager before application import. Fixed local events include storage and capture phase/failure codes. Direct console/native-originated reports, early startup exceptions and development tooling remain outside that bound; no remote uploader is configured. Preserve those limits when debugging with private data.
 
 ## Local development builds (later native checks)
 
@@ -75,4 +83,4 @@ EXPO_NO_TELEMETRY=1 npm start
 
 Creating the native client locally requires macOS/Xcode for iOS, or the Android SDK/JDK for Android. Expo SDK 57's [official prerequisites](https://docs.expo.dev/versions/v57.0.0/) include Xcode 26.4+ and iOS 16.4+. The scripts `npm run ios` and `npm run android` invoke Expo's local debug build commands. They are documented entry points, **not checks run in this cloud job**. Physical iOS installation may require signing setup, which needs separate authorization; no signing credentials were accessed here. Rebuild the client after native dependencies or plugin configuration change.
 
-Real-device testing is deferred, with iOS first and Android afterwards. Native compilation, camera timing, capture interruption, media durability, playback and capture/export acceptance remain unverified. Passing unit tests, generation and bundles does not establish native acceptance or release readiness. A JavaScript record request time is not the first recorded frame; no live capture mapping or frame-accuracy claim is implemented.
+Real-device testing is deferred, with iOS first and Android afterwards. Native compilation/unit execution, camera timing, capture interruption, media durability, playback and capture/export acceptance remain unverified. Passing JS units, generation and bundles does not establish native acceptance or release readiness. A JavaScript record request time is not the first recorded frame; the provisional reported-position route makes no frame-accuracy or measured tap-alignment claim.

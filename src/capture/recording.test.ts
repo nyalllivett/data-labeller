@@ -45,6 +45,33 @@ test('equal samples keep event order and zero-length intervals without expansion
   expect(decodeDraft(JSON.stringify(record))).toEqual(record);
 });
 
+test('untimed label failures survive checkpoints/finalization with only an event-order anchor and no fabricated media position', () => {
+  const record = { ...toggleLabel(draft(), id(2), position(200)), annotationFailures: [
+    { labelId: id(3), afterEvent: 1, reason: 'clock-unavailable' as const },
+    { labelId: id(2), afterEvent: 1, reason: 'invalid-timing' as const },
+  ] };
+  const decoded = decodeDraft(JSON.stringify(record));
+  expect(decoded.annotationFailures).toEqual(record.annotationFailures);
+  expect(Object.isFrozen(decoded.annotationFailures)).toBe(true);
+  expect(Object.isFrozen(decoded.annotationFailures[0])).toBe(true);
+  const saved = finalizeRecording({ ...decoded, termination: 'stopped' }, { durationMs: 1000, byteSize: 1 });
+  expect(saved.intervals).toEqual([{ labelId: id(2), startMs: 200, endMs: 1000 }]);
+  expect(decodeRecording(JSON.stringify(saved)).annotationFailures).toEqual(record.annotationFailures);
+  const legacy = { ...draft(), annotationFailures: undefined };
+  expect(decodeDraft(JSON.stringify(legacy)).annotationFailures).toEqual([]);
+});
+
+test('corrupt untimed failure metadata cannot be silently discarded or associated with an unknown label/event', () => {
+  const record = draft();
+  const failure = { labelId: id(2), afterEvent: 0, reason: 'clock-unavailable' };
+  for (const annotationFailures of [
+    null, 'bad', [null], [{ ...failure, labelId: id(4) }], [{ ...failure, afterEvent: -1 }],
+    [{ ...failure, afterEvent: 0.5 }], [{ ...failure, afterEvent: 1 }], [{ ...failure, reason: 'js-start' }],
+  ]) {
+    expect(() => decodeDraft(JSON.stringify({ ...record, annotationFailures }))).toThrow('invalid-data');
+  }
+});
+
 test.each([0, -1, NaN, Infinity])('rejects unavailable/invalid native position %s', (mediaMs) => {
   expect(() => checkPosition(draft(), position(mediaMs))).toThrow('invalid-timing');
 });
