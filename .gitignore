@@ -6,6 +6,10 @@ coverage/
 /modules/private-storage/.swiftpm/
 /modules/private-storage/android/build/
 /modules/private-storage/android/.gradle/
+/modules/capture-media/.build/
+/modules/capture-media/.swiftpm/
+/modules/capture-media/android/build/
+/modules/capture-media/android/.gradle/
 /ios/
 /android/
 *.tsbuildinfo

@@ -12,7 +12,8 @@ Keep safeguards proportional: use the simplest correct design for credible user 
 
 - Project rules and V1 scope: established at `89974c5871b81c0ea673e9696f750afa8c352fd8`.
 - Slice A: independently reviewed at `a6acb30c3c74aa5b43b1e5fa9f70839db95b97ad` and merged by the parent as `967b7e6856fb3759e9565a4c0b3501a145f4c2d0` ([PR #2](https://github.com/nyalllivett/data-labeller/pull/2)).
-- Slice B: implemented on `0003-project-labels` in [draft PR #3](https://github.com/nyalllivett/data-labeller/pull/3). Astra's review of `d161965d5cea075007e45bcbe52078a6b5ea4685` requested a multi-request discard guard and owned native policy unit test sources/targets; both are addressed for revised exact-commit review. Native unit execution remains toolchain/network-blocked, separately from deferred device QA; authorized merge remains pending. See [slice B decisions and checks](slice-b.md). C–E remain unimplemented.
+- Slice B: independently approved at `e984d51d19a7aaa22f655725a604961006333867` and parent-merged as `dabff1cb98467d2f6c39c8992f23e2f708c42057` in [PR #3](https://github.com/nyalllivett/data-labeller/pull/3), with documented native execution limits. See [slice B decisions and checks](slice-b.md).
+- Slice C: in progress on `0004-capture-labels`; [capture decisions and checkpoint status](slice-c.md). Final verification, independent exact-commit review and authorized merge remain pending. D–E remain unimplemented.
 - Application scaffold: installed Expo 57/React Native 0.86/TypeScript toolchain, minimal app shell, deterministic unit/component suite, strict type checking and lint. Cloud verification outcomes are recorded below and in the README.
 - Native SDK/timing feasibility: official docs and installed camera/playback public/native sources inspected. Both platform bundles and native project generation checked. Expo Camera exposes no first-frame/live recording clock through the inspected public API; native anchor/mapping feasibility remains open for C. Project metadata persistence/reconciliation is implemented in B with controlled unit tests; native durability is unverified. Media promotion/reconciliation remains proposed for C.
 - Device testing: deferred at the project owner's request; iOS is the first later validation target.
@@ -35,7 +36,7 @@ Implementation status: reviewed by GPT-6 Astra and merged by the parent in PR #2
 
 ### B. Project and label domain with local persistence
 
-Implementation status: project/label rules and screens, SQLite staging/commit/reconciliation, fixed exception reporting and private storage preparation delivered on `0003-project-labels`; review fixes include multi-request discard recovery guards and native policy unit sources/targets. Revised review pending; native unit targets have not executed in this cloud. Tests/checks and native verification limits are in [slice-b.md](slice-b.md#verification). Historical recording names will be snapshotted by C alongside stable label IDs; B does not implement recording.
+Implementation status: independently reviewed and parent-merged in PR #3, including multi-request discard recovery and native policy unit sources/targets. Native unit targets have not executed in this cloud; review approved with those documented limits. Tests/checks are in [slice-b.md](slice-b.md#verification). Historical recording names are snapshotted by C alongside stable label IDs; B itself does not implement recording.
 
 - Implement project creation and custom label management with thin screens and testable domain behavior.
 - Decide validation and identifier/rename behavior required by this slice.
@@ -44,6 +45,8 @@ Implementation status: project/label rules and screens, SQLite staging/commit/re
 - Acceptance: project/label behavior is covered by deterministic unit tests and passes type/lint checks, with reviewed persistence assumptions and remaining device limits recorded.
 
 ### C. Capture and independent label toggles
+
+Implementation status: in progress on `0004-capture-labels`; final checks and review pending. Reported native media-duration samples are provisional, with unquantified tap lag and no elapsed-JS extrapolation. Native/unit/device limits are tracked in [slice-c.md](slice-c.md).
 
 - Implement front/rear in-app capture through a narrow media adapter.
 - Implement the bottom horizontal label row, active highlighting, and a separate fixed Stop control.

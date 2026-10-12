@@ -5,6 +5,17 @@ export type DiagnosticEvent =
   | 'storage.saving'
   | 'storage.ready'
   | 'storage.failed';
+export type CaptureDiagnosticEvent =
+  | 'capture.starting'
+  | 'capture.recording'
+  | 'capture.stopping'
+  | 'capture.interrupted'
+  | 'capture.saving'
+  | 'capture.saved'
+  | 'capture.cancelled'
+  | 'capture.failed'
+  | 'capture.clock_unavailable'
+  | 'capture.checkpoint_failed';
 // Failure codes are separate fixed events; native messages never enter logs.
 export type StorageDiagnosticEvent =
   | 'storage.unavailable'
@@ -16,7 +27,7 @@ export type StorageDiagnosticEvent =
 export type Diagnostic = Readonly<{
   schemaVersion: 1;
   scope: 'app-shell';
-  event: DiagnosticEvent | StorageDiagnosticEvent;
+  event: DiagnosticEvent | StorageDiagnosticEvent | CaptureDiagnosticEvent;
 }>;
 
 export type DiagnosticSink = (diagnostic: Diagnostic) => void;
@@ -25,7 +36,7 @@ const consoleSink: DiagnosticSink = (diagnostic) => console.info(diagnostic);
 
 // Only fixed event codes enter diagnostics. Never pass exception/user payloads.
 export function emitDiagnostic(
-  event: DiagnosticEvent | StorageDiagnosticEvent,
+  event: DiagnosticEvent | StorageDiagnosticEvent | CaptureDiagnosticEvent,
   sink: DiagnosticSink = consoleSink,
 ): boolean {
   try {

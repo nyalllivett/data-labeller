@@ -1,0 +1,366 @@
+diff --git a/node_modules/expo-camera/android/build.gradle b/node_modules/expo-camera/android/build.gradle
+index 851cadf..2daca27 100644
+--- a/node_modules/expo-camera/android/build.gradle
++++ b/node_modules/expo-camera/android/build.gradle
+@@ -25,6 +25,7 @@ configurations.configureEach {
+ }
+ 
+ dependencies {
++  implementation project(':capture-media')
+   def camerax_version = "1.6.0"
+ 
+   api "androidx.exifinterface:exifinterface:1.4.2"
+diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraViewModule.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraViewModule.kt
+index 21382f8..56a6747 100644
+--- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraViewModule.kt
++++ b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraViewModule.kt
+@@ -467,6 +467,14 @@ class CameraViewModule : Module() {
+         view.stopRecording()
+       }.runOnQueue(Queues.MAIN)
+ 
++      AsyncFunction("sampleRecordingPosition") { view: ExpoCameraView, id: String ->
++        view.dataLabellerRecordingPosition.sample(id)
++      }.runOnQueue(Queues.MAIN)
++
++      AsyncFunction("stopDataLabellerRecording") { view: ExpoCameraView, id: String ->
++        if (view.dataLabellerStopRequest.request(id)) view.stopRecording()
++      }.runOnQueue(Queues.MAIN)
++
+       AsyncFunction("resumePreview") { view: ExpoCameraView ->
+         view.resumePreview()
+       }
+diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+index 999a22c..15872d5 100644
+--- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
++++ b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+@@ -45,6 +45,9 @@ import androidx.camera.video.Recorder
+ import androidx.camera.video.Recording
+ import androidx.camera.video.VideoCapture
+ import androidx.camera.video.VideoRecordEvent
++import expo.modules.capturemedia.RecordingPosition
++import expo.modules.capturemedia.RecordingStopRequest
++import expo.modules.capturemedia.captureOutputFile
+ import androidx.camera.view.PreviewView
+ import androidx.core.app.ActivityCompat
+ import androidx.core.content.ContextCompat
+@@ -132,6 +135,8 @@ class ExpoCameraView(
+   private var barcodeFormats: List<BarcodeType> = emptyList()
+   private var glSurfaceTexture: SurfaceTexture? = null
+   private var isRecording = false
++  val dataLabellerRecordingPosition = RecordingPosition()
++  val dataLabellerStopRequest = RecordingStopRequest()
+ 
+   private var previewView = PreviewView(context).apply {
+     elevation = 0f
+@@ -353,7 +358,11 @@ class ExpoCameraView(
+   }
+ 
+   fun record(options: RecordingOptions, promise: Promise, cacheDirectory: File) {
+-    val file = FileSystemUtils.generateOutputFile(cacheDirectory, "Camera", ".mp4")
++    val file = captureOutputFile(options.dataLabellerOutputUri) {
++      FileSystemUtils.generateOutputFile(cacheDirectory, "Camera", ".mp4")
++    }
++    dataLabellerRecordingPosition.begin(options.dataLabellerRecordingId)
++    dataLabellerStopRequest.begin(options.dataLabellerRecordingId)
+     val fileOutputOptions = FileOutputOptions.Builder(file)
+       .setFileSizeLimit(options.maxFileSize.toLong())
+       .setDurationLimitMillis(options.maxDuration.toLong() * 1000)
+@@ -375,6 +384,10 @@ class ExpoCameraView(
+           }
+         }
+         .start(ContextCompat.getMainExecutor(context)) { event ->
++          dataLabellerRecordingPosition.observe(
++            options.dataLabellerRecordingId, event.recordingStats.recordedDurationNanos,
++            event is VideoRecordEvent.Start || event is VideoRecordEvent.Status || event is VideoRecordEvent.Resume
++          )
+           when (event) {
+             is VideoRecordEvent.Pause -> {
+               isRecording = false
+@@ -384,8 +397,18 @@ class ExpoCameraView(
+             }
+             is VideoRecordEvent.Start -> {
+               isRecording = true
++              if (dataLabellerStopRequest.didStart()) stopRecording()
+             }
+             is VideoRecordEvent.Finalize -> {
++              dataLabellerStopRequest.finish()
++              if (options.dataLabellerRecordingId != null) {
++                promise.resolve(Bundle().apply {
++                  putString("uri", options.dataLabellerOutputUri)
++                  putBoolean("dataLabellerInterrupted", event.error != VideoRecordEvent.Finalize.ERROR_NONE)
++                  putBoolean("dataLabellerFinalized", true)
++                })
++                return@start
++              }
+               when (event.error) {
+                 VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED,
+                 VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED,
+@@ -394,6 +417,7 @@ class ExpoCameraView(
+                   promise.resolve(
+                     Bundle().apply {
+                       putString("uri", event.outputResults.outputUri.toString())
++                      putBoolean("dataLabellerInterrupted", event.error != VideoRecordEvent.Finalize.ERROR_NONE)
+                     }
+                   )
+                 }
+diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/Options.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/Options.kt
+index 21ade07..977b09a 100644
+--- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/Options.kt
++++ b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/Options.kt
+@@ -30,6 +30,8 @@ data class SavePictureOptions(
+ 
+ @OptimizedRecord
+ data class RecordingOptions(
++  @Field val dataLabellerOutputUri: String? = null,
++  @Field val dataLabellerRecordingId: String? = null,
+   @Field val maxDuration: Int = 0,
+   @Field val maxFileSize: Int = 0
+ ) : Record
+diff --git a/node_modules/expo-camera/build/Camera.types.d.ts b/node_modules/expo-camera/build/Camera.types.d.ts
+index 0ee50ec..746a7d5 100644
+--- a/node_modules/expo-camera/build/Camera.types.d.ts
++++ b/node_modules/expo-camera/build/Camera.types.d.ts
+@@ -466,6 +466,8 @@ export interface CameraViewRef {
+     readonly record: (options?: CameraRecordingOptions) => Promise<{
+         uri: string;
+     }>;
++    readonly sampleRecordingPosition: (id: string) => Promise<number>;
++    readonly stopDataLabellerRecording: (id: string) => Promise<void>;
+     readonly toggleRecording: () => Promise<void>;
+     readonly stopRecording: () => Promise<void>;
+     readonly launchModernScanner: () => Promise<void>;
+diff --git a/node_modules/expo-camera/build/CameraView.d.ts b/node_modules/expo-camera/build/CameraView.d.ts
+index da858fa..9c77534 100644
+--- a/node_modules/expo-camera/build/CameraView.d.ts
++++ b/node_modules/expo-camera/build/CameraView.d.ts
+@@ -3,6 +3,8 @@ import { Component } from 'react';
+ import type { CameraCapturedPicture, CameraOrientation, CameraPictureOptions, CameraViewProps, CameraRecordingOptions, CameraViewRef, ScanningOptions, ScanningResult, VideoCodec, AvailableLenses } from './Camera.types';
+ import type { PictureRef } from './PictureRef';
+ export default class CameraView extends Component<CameraViewProps> {
++    sampleRecordingPosition(id: string): Promise<number | undefined>;
++    stopRecordingAsync(id: string): Promise<void>;
+     /**
+      * Property that determines if the current device has the ability to use `DataScannerViewController` (iOS 16+) or the Google code scanner (Android).
+      */
+diff --git a/node_modules/expo-camera/build/CameraView.js b/node_modules/expo-camera/build/CameraView.js
+index 78f8198..a089cfb 100644
+--- a/node_modules/expo-camera/build/CameraView.js
++++ b/node_modules/expo-camera/build/CameraView.js
+@@ -172,6 +172,12 @@ export default class CameraView extends Component {
+         const recordingOptions = ensureRecordingOptions(options);
+         return this._cameraRef.current?.record(recordingOptions);
+     }
++    async sampleRecordingPosition(id) {
++        return this._cameraRef.current?.sampleRecordingPosition(id);
++    }
++    async stopRecordingAsync(id) {
++        await this._cameraRef.current?.stopDataLabellerRecording(id);
++    }
+     /**
+      * Pauses or resumes the video recording. Only has an effect if there is an active recording. On `iOS`, this method only supported on `iOS` 18.
+      *
+diff --git a/node_modules/expo-camera/ios/CameraViewModule.swift b/node_modules/expo-camera/ios/CameraViewModule.swift
+index e199463..4bbe368 100644
+--- a/node_modules/expo-camera/ios/CameraViewModule.swift
++++ b/node_modules/expo-camera/ios/CameraViewModule.swift
+@@ -2,6 +2,7 @@
+ 
+ import AVFoundation
+ import ExpoModulesCore
++import CaptureMedia
+ import VisionKit
+ 
+ let cameraEvents = ["onCameraReady", "onMountError", "onPictureSaved", "onBarcodeScanned", "onResponsiveOrientationChanged", "onAvailableLensesChanged"]
+@@ -308,6 +309,29 @@ public final class CameraViewModule: Module, ScannerResultHandler {
+         #endif
+         view.stopRecording()
+       }
++
++      AsyncFunction("sampleRecordingPosition") { (view: CameraView, id: String, promise: Promise) in
++        view.sessionQueue.async {
++          do {
++            guard let output = view.session.outputs.compactMap({ $0 as? AVCaptureMovieFileOutput }).first else {
++              throw NSError(domain: "CaptureMedia", code: 1, userInfo: [NSLocalizedDescriptionKey: "capture-media-unavailable"])
++            }
++            promise.resolve(try reportedRecordingPosition(
++              requestedId: id, currentId: view.dataLabellerRecordingId,
++              seconds: CMTimeGetSeconds(output.recordedDuration), isRecording: output.isRecording
++            ))
++          } catch {
++            promise.reject(error)
++          }
++        }
++      }
++
++      AsyncFunction("stopDataLabellerRecording") { (view: CameraView, id: String, promise: Promise) in
++        view.sessionQueue.async {
++          if view.dataLabellerStopRequest.request(id) { view.stopRecording() }
++          promise.resolve()
++        }
++      }
+     }
+ 
+     Class("Picture", PictureRef.self) {
+diff --git a/node_modules/expo-camera/ios/Current/CameraRecordingOptions.swift b/node_modules/expo-camera/ios/Current/CameraRecordingOptions.swift
+index 3cf58f5..2730e49 100644
+--- a/node_modules/expo-camera/ios/Current/CameraRecordingOptions.swift
++++ b/node_modules/expo-camera/ios/Current/CameraRecordingOptions.swift
+@@ -1,6 +1,8 @@
+ import ExpoModulesCore
+ 
+ struct CameraRecordingOptions: Record {
++  @Field var dataLabellerOutputUri: String?
++  @Field var dataLabellerRecordingId: String?
+   @Field var maxDuration: Double?
+   @Field var maxFileSize: Double?
+   @Field var mirror: Bool = false
+diff --git a/node_modules/expo-camera/ios/Current/CameraVideoRecording.swift b/node_modules/expo-camera/ios/Current/CameraVideoRecording.swift
+index 4db86b1..3fb3f80 100644
+--- a/node_modules/expo-camera/ios/Current/CameraVideoRecording.swift
++++ b/node_modules/expo-camera/ios/Current/CameraVideoRecording.swift
+@@ -1,8 +1,11 @@
+ import UIKit
+ import AVFoundation
+ import ExpoModulesCore
++import CaptureMedia
+ 
+ protocol CameraVideoRecordingDelegate: AnyObject {
++  var sessionQueue: DispatchQueue { get }
++  var dataLabellerStopRequest: RecordingStopRequest { get }
+   var responsiveWhenOrientationLocked: Bool { get }
+   var physicalOrientation: UIDeviceOrientation { get }
+   var mirror: Bool { get }
+@@ -17,6 +20,7 @@ class CameraVideoRecording: NSObject, AVCaptureFileOutputRecordingDelegate {
+   private var videoRecordedPromise: Promise?
+   private var videoCodecType: AVVideoCodecType?
+   private var isValidVideoOptions = true
++  private var dataLabellerRecordingId: String?
+ 
+   init(delegate: CameraVideoRecordingDelegate) {
+     self.delegate = delegate
+@@ -49,8 +53,15 @@ class CameraVideoRecording: NSObject, AVCaptureFileOutputRecordingDelegate {
+     }
+ 
+     let path = FileSystemUtilities.generatePathInCache(appContext, in: "Camera", extension: ".mov")
+-    let fileUrl = URL(fileURLWithPath: path)
++    let fileUrl: URL
++    do {
++      fileUrl = try captureOutputURL(options.dataLabellerOutputUri, fallback: { URL(fileURLWithPath: path) })
++    } catch {
++      promise.reject(error)
++      return
++    }
+     videoRecordedPromise = promise
++    dataLabellerRecordingId = options.dataLabellerRecordingId
+ 
+     videoFileOutput.startRecording(to: fileUrl, recordingDelegate: self)
+   }
+@@ -106,6 +117,18 @@ class CameraVideoRecording: NSObject, AVCaptureFileOutputRecordingDelegate {
+     }
+   }
+ 
++  func fileOutput(
++    _ output: AVCaptureFileOutput,
++    didStartRecordingTo fileURL: URL,
++    from connections: [AVCaptureConnection]
++  ) {
++    delegate?.sessionQueue.async { [weak self] in
++      if self?.delegate?.dataLabellerStopRequest.didStart() == true {
++        output.stopRecording()
++      }
++    }
++  }
++
+   func fileOutput(
+     _ output: AVCaptureFileOutput,
+     didFinishRecordingTo outputFileURL: URL,
+@@ -115,13 +138,14 @@ class CameraVideoRecording: NSObject, AVCaptureFileOutputRecordingDelegate {
+     defer {
+       videoRecordedPromise = nil
+       videoCodecType = nil
++      delegate?.sessionQueue.async { [weak self] in self?.delegate?.dataLabellerStopRequest.finish() }
+     }
+ 
+     let success = error == nil
+       || (error as? NSError)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+ 
+-    if success {
+-      videoRecordedPromise?.resolve(["uri": outputFileURL.absoluteString])
++    if success || dataLabellerRecordingId != nil {
++      videoRecordedPromise?.resolve(["uri": outputFileURL.absoluteString, "dataLabellerInterrupted": error != nil, "dataLabellerFinalized": true])
+     } else {
+       videoRecordedPromise?.reject(CameraRecordingFailedException())
+     }
+diff --git a/node_modules/expo-camera/ios/Current/CameraView.swift b/node_modules/expo-camera/ios/Current/CameraView.swift
+index 4692d00..57b3e5c 100644
+--- a/node_modules/expo-camera/ios/Current/CameraView.swift
++++ b/node_modules/expo-camera/ios/Current/CameraView.swift
+@@ -1,10 +1,13 @@
+ import UIKit
+ @preconcurrency import ExpoModulesCore
+ import CoreMotion
++import CaptureMedia
+ 
+ public class CameraView: ExpoView, EXAppLifecycleListener, EXCameraInterface, CameraEvent,
+   CameraSessionManagerDelegate, CameraPhotoCaptureDelegate, CameraVideoRecordingDelegate {
+   public var sessionQueue = DispatchQueue(label: "captureSessionQueue")
++  var dataLabellerRecordingId: String?
++  let dataLabellerStopRequest = RecordingStopRequest()
+   // Needed to satisfy EXCameraInterface
+   // swiftlint:disable implicitly_unwrapped_optional
+   public var session: AVCaptureSession!
+@@ -305,6 +308,10 @@ public class CameraView: ExpoView, EXAppLifecycleListener, EXCameraInterface, Ca
+       promise.reject(CameraOutputNotReadyException())
+       return
+     }
++    sessionQueue.async {
++      self.dataLabellerRecordingId = options.dataLabellerRecordingId
++      self.dataLabellerStopRequest.begin(options.dataLabellerRecordingId)
++    }
+     await videoRecording.record(options: options, videoFileOutput: videoFileOutput, promise: promise)
+   }
+ 
+diff --git a/node_modules/expo-camera/ios/ExpoCamera.podspec b/node_modules/expo-camera/ios/ExpoCamera.podspec
+index 6452b2a..bdb1df0 100644
+--- a/node_modules/expo-camera/ios/ExpoCamera.podspec
++++ b/node_modules/expo-camera/ios/ExpoCamera.podspec
+@@ -17,6 +17,7 @@ Pod::Spec.new do |s|
+   s.static_framework = true
+ 
+   s.dependency 'ExpoModulesCore'
++  s.dependency 'CaptureMedia'
+ 
+   # Swift/Objective-C compatibility
+   s.pod_target_xcconfig = {
+diff --git a/node_modules/expo-camera/src/Camera.types.ts b/node_modules/expo-camera/src/Camera.types.ts
+index 7cf0a07..6864f7e 100644
+--- a/node_modules/expo-camera/src/Camera.types.ts
++++ b/node_modules/expo-camera/src/Camera.types.ts
+@@ -500,6 +500,8 @@ export interface CameraViewRef {
+   readonly getAvailablePictureSizes: () => Promise<string[]>;
+   readonly getAvailableLenses: () => Promise<string[]>;
+   readonly record: (options?: CameraRecordingOptions) => Promise<{ uri: string }>;
++  readonly sampleRecordingPosition: (id: string) => Promise<number>;
++  readonly stopDataLabellerRecording: (id: string) => Promise<void>;
+   readonly toggleRecording: () => Promise<void>;
+   readonly stopRecording: () => Promise<void>;
+   readonly launchModernScanner: () => Promise<void>;
+diff --git a/node_modules/expo-camera/src/CameraView.tsx b/node_modules/expo-camera/src/CameraView.tsx
+index b2cc359..2da8506 100644
+--- a/node_modules/expo-camera/src/CameraView.tsx
++++ b/node_modules/expo-camera/src/CameraView.tsx
+@@ -265,6 +265,14 @@ export default class CameraView extends Component<CameraViewProps> {
+     return this._cameraRef.current?.record(recordingOptions);
+   }
+ 
++  async sampleRecordingPosition(id: string): Promise<number | undefined> {
++    return this._cameraRef.current?.sampleRecordingPosition(id);
++  }
++
++  async stopRecordingAsync(id: string): Promise<void> {
++    await this._cameraRef.current?.stopDataLabellerRecording(id);
++  }
++
+   /**
+    * Pauses or resumes the video recording. Only has an effect if there is an active recording. On `iOS`, this method only supported on `iOS` 18.
+    *
