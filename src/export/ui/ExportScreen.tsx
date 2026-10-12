@@ -26,7 +26,7 @@ export function ExportScreen({ store }: { store: ExportStore }) {
     {state.error && <Text accessibilityRole="alert">{messages[state.error]}</Text>}
     {state.phase === 'loading' && <Text>Loading saved recordings…</Text>}
     {state.phase === 'load-failed' && <Button title="Retry export library" onPress={() => { void store.retryLoad(); }} />}
-    {state.phase !== 'loading' && !saved.length && <Text>No saved video to export. Recover or save a recording first.</Text>}
+    {state.phase === 'library' && !saved.length && <Text>No saved video to export. Recover or save a recording first.</Text>}
     <Pressable accessibilityRole="radio" accessibilityLabel="Export project" accessibilityState={{ checked: state.scope.kind === 'project', disabled: !store.canSelect() }}
       disabled={!store.canSelect()} onPress={() => store.selectScope({ kind: 'project' })}><Text>Project: all saved recordings</Text></Pressable>
     {saved.map((record, index) => <Pressable key={record.id} accessibilityRole="radio" accessibilityLabel={`Export recording ${index + 1}`}
@@ -37,7 +37,7 @@ export function ExportScreen({ store }: { store: ExportStore }) {
     {pending.length > 0 && <Text accessibilityRole="alert">{pending.length} pending recordings have no committed video included. Project packages include their annotation inventory; selected-recording packages exclude other recordings.</Text>}
     {selected.some((record) => record.termination === 'interrupted') && <Text accessibilityRole="alert">The selection includes interrupted capture. Original interruption evidence remains in the package.</Text>}
     {selected.some((record) => record.annotationFailures.length > 0) && <Text accessibilityRole="alert">The selection has untimed label changes. Reviewed intervals do not resolve those capture failures; they remain in the package.</Text>}
-    <Text>One ZIP contains video files and JSON annotations with media linkage, milliseconds, effective saved edits and original capture evidence. Unlabelled gaps are not negative examples.</Text>
+    <Text>One unencrypted ZIP contains video files and JSON annotations with media linkage, milliseconds, effective saved edits and original capture evidence. Unlabelled gaps are not negative examples.</Text>
     <Text>Only committed annotations are exported. Preparation does not change recordings or annotations. Timing alignment remains unverified on devices.</Text>
     <Button title="Prepare export package" disabled={!store.canPrepare()} onPress={() => { void store.prepare(); }} />
     {state.phase === 'preparing' && <><Text>Preparing local package…</Text><Button title="Cancel preparation" onPress={store.cancel} /></>}
@@ -50,7 +50,7 @@ export function ExportScreen({ store }: { store: ExportStore }) {
       <Text>Package prepared in local cache. It has not been confirmed delivered.</Text>
       <Button title="Share package" disabled={!store.canShare()} onPress={() => { void store.share(); }} />
     </>}
-    {state.phase === 'sharing' && <Text>The OS share sheet is open. Return from it to continue.</Text>}
+    {state.phase === 'sharing' && <Text>Opening or waiting for the OS share sheet. Return from it to continue.</Text>}
     {state.phase === 'share-returned' && <Text>Share sheet closed; delivery is not confirmed.</Text>}
     <Text>Completed packages remain in app cache because a share recipient may still read them. The OS can remove cache files; prepare again if needed. Saved sources stay local.</Text>
   </ScrollView></SafeAreaView>;

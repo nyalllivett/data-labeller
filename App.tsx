@@ -16,10 +16,12 @@ function WorkspaceRoot() {
   const state = useSyncExternalStore(captureStore.subscribe, captureStore.getSnapshot);
   const review = useSyncExternalStore(reviewStore.subscribe, reviewStore.getSnapshot);
   const exporting = useSyncExternalStore(exportStore.subscribe, exportStore.getSnapshot);
+  // A queued press from the old project view must not open a hidden second workspace.
+  const canOpen = () => !captureStore.getSnapshot().project && !reviewStore.getSnapshot().project && !exportStore.getSnapshot().project;
   return <>
     <StatusBar style={state.project ? 'light' : 'dark'} />
     {exporting.project ? <ExportScreen store={exportStore} /> : review.project ? <ReviewScreen store={reviewStore} /> : state.project ? <CaptureScreen store={captureStore} camera={camera} /> :
-      <ProjectWorkspace store={projectStore} newId={newId} onCapture={(project) => { void captureStore.open(project); }} onReview={(project) => { void reviewStore.open(project); }} onExport={(project) => { void exportStore.open(project); }} />}
+      <ProjectWorkspace store={projectStore} newId={newId} onCapture={(project) => { if (canOpen()) void captureStore.open(project); }} onReview={(project) => { if (canOpen()) void reviewStore.open(project); }} onExport={(project) => { if (canOpen()) void exportStore.open(project); }} />}
   </>;
 }
 

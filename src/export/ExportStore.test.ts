@@ -1,0 +1,100 @@
+import { deferred } from '../../test/captureFixture';
+import { exportFixture } from '../../test/exportFixture';
+import { id } from '../../test/ids';
+import { decodeExport } from './document';
+import { ExportError } from './ExportError';
+import type { PreparedPackage } from './PackagePort';
+
+beforeEach(() => { jest.spyOn(console, 'info').mockImplementation(() => undefined); });
+test('single/project exports freeze committed snapshots; share return and Back retain completed cache packages', async () => {
+  const f = exportFixture(); await f.open();
+  expect(f.store.selectScope({ kind: 'recording', recordingId: f.record.id })).toBe(true);
+  expect(await f.store.prepare()).toBe(true);
+  const intent = f.packages.prepare.mock.calls[0]![0]; const document = decodeExport(intent.json);
+  expect(document.recordings).toHaveLength(1); expect(document.pendingRecordings).toEqual([]);
+  expect(intent.media).toEqual([{ uri: `file:///private/recordings/${f.record.id}.mov`, filename: `${f.record.id}.mov`, byteSize: f.record.byteSize }]);
+  expect(f.store.selectScope({ kind: 'recording', recordingId: f.record.id })).toBe(true);
+  expect(f.store.getSnapshot().phase).toBe('prepared');
+  expect(await f.store.share()).toBe(true); expect(f.store.getSnapshot().phase).toBe('share-returned');
+  expect(f.packages.discard).not.toHaveBeenCalled(); expect(f.store.close()).toBe(true); expect(f.packages.discard).not.toHaveBeenCalled();
+  await f.open(); await f.store.prepare();
+  expect(f.packages.prepare.mock.calls[1]![0].id).not.toBe(intent.id);
+  const project = decodeExport(f.packages.prepare.mock.calls[1]![0].json);
+  expect(project.recordings).toHaveLength(2); expect(project.pendingRecordings).toHaveLength(1);
+  expect(f.recordings).not.toHaveProperty('commit'); expect(f.repository.save).not.toHaveBeenCalled();
+  expect((console.info as jest.Mock).mock.calls).toEqual(['export.preparing', 'export.prepared', 'export.share_opening',
+    'export.share_returned', 'export.preparing', 'export.prepared'].map((event) => [{ schemaVersion: 1, scope: 'app-shell', event }]));
+});
+test('loading, repeated/conflicting actions and empty/invalid selections remain guarded with scoped load retry', async () => {
+  const f = exportFixture(); expect(f.store.close()).toBe(false); expect(await f.store.prepare()).toBe(false); expect(await f.store.share()).toBe(false);
+  expect(await f.store.retryPrepare()).toBe(false); expect(await f.store.retryCleanup()).toBe(false); expect(await f.store.retryLoad()).toBe(false); expect(f.store.cancel()).toBe(false);
+  const library = deferred<typeof f.workspace>(); f.recordings.load.mockReturnValueOnce(library.promise);
+  const opening = f.open(); expect(await f.open()).toBe(false); expect(f.store.close()).toBe(false); expect(f.store.selectScope({ kind: 'project' })).toBe(false);
+  library.reject(new Error('/private/failure')); expect(await opening).toBe(false); expect(f.store.getSnapshot().error).toBe('source-unavailable');
+  expect(await f.store.retryLoad()).toBe(true);
+  expect(f.store.selectScope({ kind: 'recording', recordingId: id(99) })).toBe(false);
+  expect(f.store.close()).toBe(true);
+  f.recordings.load.mockResolvedValueOnce({ pending: [], saved: [] }); await f.open(); expect(f.store.canPrepare()).toBe(false);
+});
+test('accepted cancellation waits for native work and queued cancel completion; a successful native result cannot become Prepared', async () => {
+  const f = exportFixture(); await f.open(); const native = deferred<PreparedPackage>(); const cancel = deferred<void>();
+  f.packages.prepare.mockReturnValueOnce(native.promise); f.packages.cancel.mockReturnValueOnce(cancel.promise);
+  const preparing = f.store.prepare();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  const cancellationRequested = f.packages.prepare.mock.calls[0]![1];
+  expect(cancellationRequested()).toBe(false);
+  expect(f.store.getSnapshot().phase).toBe('preparing'); expect(await f.store.prepare()).toBe(false); expect(await f.store.retryPrepare()).toBe(false);
+  expect(f.store.close()).toBe(false); expect(await f.store.share()).toBe(false); expect(f.store.selectScope({ kind: 'project' })).toBe(false);
+  expect(f.store.cancel()).toBe(true); expect(f.store.cancel()).toBe(false); expect(f.store.getSnapshot().phase).toBe('cancelling');
+  expect(cancellationRequested()).toBe(true);
+  expect(f.packages.discard).not.toHaveBeenCalled();
+  native.resolve({ id: id(20), uri: 'file:///cache/package.zip', byteSize: 500 });
+  await Promise.resolve(); await Promise.resolve(); expect(f.packages.discard).not.toHaveBeenCalled();
+  cancel.resolve(); expect(await preparing).toBe(false);
+  expect(f.packages.discard).toHaveBeenCalledWith(id(20)); expect(f.store.getSnapshot()).toMatchObject({ phase: 'library', cancelled: true, packageFile: null });
+});
+test('native cancel failure still discards only the completed attempt after it settles; source-stage cancellation creates no package', async () => {
+  const f = exportFixture(); await f.open(); const native = deferred<PreparedPackage>(); f.packages.prepare.mockReturnValueOnce(native.promise);
+  f.packages.cancel.mockRejectedValueOnce(new Error('/private/cancel'));
+  const preparing = f.store.prepare();
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  f.store.cancel(); await Promise.resolve(); expect(f.store.getSnapshot().error).toBe('cancel-failed');
+  expect(f.packages.discard).not.toHaveBeenCalled(); native.reject(new ExportError('cancelled')); expect(await preparing).toBe(false);
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'library', cancelled: true });
+  const annotations = deferred<Awaited<ReturnType<typeof f.repository.load>>>(); f.repository.load.mockReturnValueOnce(annotations.promise);
+  const reading = f.store.prepare(); f.store.cancel(); annotations.reject(new Error('source unavailable'));
+  expect(await reading).toBe(false); expect(f.packages.prepare).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify((console.info as jest.Mock).mock.calls)).not.toContain('/private');
+});
+test('package failures retry the identical snapshot; cleanup failure blocks new work/navigation until explicit cleanup retry', async () => {
+  const f = exportFixture(); await f.open(); f.packages.prepare.mockRejectedValueOnce(new Error('/private/low-storage'));
+  f.packages.discard.mockRejectedValueOnce(new Error('/private/cleanup'));
+  expect(await f.store.prepare()).toBe(false); expect(f.store.getSnapshot()).toMatchObject({ phase: 'cleanup-failed', error: 'cleanup-failed' });
+  expect(await f.store.prepare()).toBe(false); expect(await f.store.retryPrepare()).toBe(false); expect(f.store.close()).toBe(false); expect(f.store.selectScope({ kind: 'project' })).toBe(false);
+  const removing = deferred<void>(); f.packages.discard.mockReturnValueOnce(removing.promise); const retry = f.store.retryCleanup();
+  expect(f.store.getSnapshot().phase).toBe('cleaning'); expect(f.store.close()).toBe(false); expect(await f.store.retryCleanup()).toBe(false);
+  removing.resolve(); expect(await retry).toBe(true); expect(f.store.getSnapshot().phase).toBe('preparation-failed');
+  const calls = f.repository.load.mock.calls.length; expect(await f.store.retryPrepare()).toBe(true);
+  expect(f.packages.prepare.mock.calls[1]![0]).toEqual(f.packages.prepare.mock.calls[0]![0]);
+  expect(f.repository.load).toHaveBeenCalledTimes(calls);
+});
+test('source and ID failures have explicit retry without silently using capture fallback', async () => {
+  const f = exportFixture(); await f.open(); f.repository.load.mockRejectedValueOnce(new Error('secret annotation error'));
+  expect(await f.store.prepare()).toBe(false); expect(f.store.getSnapshot().error).toBe('source-unavailable'); expect(f.packages.prepare).not.toHaveBeenCalled();
+  expect(await f.store.retryPrepare()).toBe(true);
+  f.newId.mockImplementationOnce(() => { throw new Error('native crypto failed'); });
+  expect(await f.store.prepare()).toBe(false); expect(f.store.getSnapshot()).toMatchObject({ phase: 'preparation-failed', error: 'package-failed', packageFile: null });
+  expect(await f.store.retryPrepare()).toBe(true);
+});
+test('share availability/presentation failures retain the package, missing cache requires a new job and no delivery is claimed', async () => {
+  const f = exportFixture(); await f.open(); await f.store.prepare(); const original = f.store.getSnapshot().packageFile;
+  f.sharing.share.mockRejectedValueOnce(new ExportError('sharing-unavailable')); expect(await f.store.share()).toBe(false);
+  expect(f.store.getSnapshot()).toMatchObject({ phase: 'share-failed', error: 'sharing-unavailable', packageFile: original });
+  const sheet = deferred<void>(); f.sharing.share.mockReturnValueOnce(sheet.promise); const sharing = f.store.share();
+  expect(await f.store.share()).toBe(false); expect(await f.store.prepare()).toBe(false); expect(f.store.close()).toBe(false);
+  await Promise.resolve(); sheet.reject(new Error('/private/native-launch')); expect(await sharing).toBe(false); expect(f.store.getSnapshot().error).toBe('share-failed');
+  expect(await f.store.share()).toBe(true); expect(f.packages.discard).not.toHaveBeenCalled();
+  f.packages.available.mockResolvedValueOnce(false); expect(await f.store.share()).toBe(false);
+  expect(f.store.getSnapshot().error).toBe('package-missing'); expect(await f.store.share()).toBe(false);
+  expect(await f.store.prepare()).toBe(true); expect(f.store.getSnapshot().packageFile?.id).not.toBe(original!.id); expect(f.packages.discard).not.toHaveBeenCalled();
+});

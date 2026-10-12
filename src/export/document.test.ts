@@ -49,6 +49,17 @@ test('preserves equal event ordering, zero-length intervals and fractional endpo
   expect(document.recordings[0]?.originalCapture.intervals[0]).toMatchObject({ startMs: 100, endMs: 100 });
   expect(document.recordings[0]?.effective.intervals[1]?.endMs).toBe(durationMs);
 });
+test('Android MP4 linkage preserves CameraX position provenance without converting the media time basis', () => {
+  const f = fixture();
+  const draft = toggleLabel(createRecordingDraft(id(10), f.project, 'front', 'mp4'), id(2),
+    { recordingId: id(10), mediaMs: 125.5, source: 'camerax-recording-stats' });
+  const record = finalizeRecording({ ...draft, termination: 'stopped' }, { durationMs: 500.25, byteSize: 256 });
+  const document = exportDocument(f.project, { kind: 'recording', recordingId: record.id },
+    [{ videoFile: `${record.id}.mp4`, originalCapture: record, effective: originalAnnotations(record) }], []);
+  expect(decodeExport(encodeExport(document)).recordings[0]).toMatchObject({ videoFile: `${record.id}.mp4`,
+    originalCapture: { facing: 'front', extension: 'mp4', events: [{ mediaMs: 125.5, source: 'camerax-recording-stats' }], lagBoundMs: null },
+    effective: { intervals: [{ startMs: 125.5, endMs: 500.25 }] } });
+});
 test.each([
   (value: any) => { value.format = 'other'; }, (value: any) => { value.schemaVersion = 2; },
   (value: any) => { value.timeUnit = 'seconds'; }, (value: any) => { value.scope = { kind: 'other' }; },

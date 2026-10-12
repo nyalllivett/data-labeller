@@ -100,7 +100,7 @@ export class ExportStore {
     }); return true;
   };
   private async cleanup(): Promise<false> {
-    this.update({ phase: 'cleaning' });
+    this.update({ phase: 'cleaning', error: null });
     try {
       await this.packages.discard(this.submission!.id);
       if (this.outcome === 'cancelled') {

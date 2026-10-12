@@ -83,22 +83,27 @@ test('creates/renames a project, adds/renames/archives/restores labels with stab
   expect(screen.getByRole('header', { name: 'Renamed' })).toBeVisible();
 });
 
-test('opens capture with the committed project and locks it while a name editor is open', async () => {
+test('opens capture, review and export with the committed project and locks them during name editing', async () => {
   const { repository, store, newId } = fixture();
   const project = createProject(id(1), 'Capture project');
   repository.load.mockResolvedValueOnce({ projects: [project], pending: [] });
-  const capture = jest.fn(); const review = jest.fn(); const user = userEvent.setup();
-  await render(<ProjectWorkspace store={store} newId={newId} onCapture={capture} onReview={review} onExport={jest.fn()} />);
+  const capture = jest.fn(); const review = jest.fn(); const exportRecordings = jest.fn(); const user = userEvent.setup();
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={capture} onReview={review} onExport={exportRecordings} />);
   await user.press(screen.getByRole('button', { name: 'Open Capture project' }));
   await user.press(screen.getByRole('button', { name: 'Record video' }));
   expect(capture).toHaveBeenCalledWith(project);
   await user.press(screen.getByRole('button', { name: 'Review recordings' }));
   expect(review).toHaveBeenCalledWith(project);
+  await user.press(screen.getByRole('button', { name: 'Export recordings' }));
+  expect(exportRecordings).toHaveBeenCalledWith(project);
   await user.press(screen.getByRole('button', { name: 'Rename project' }));
   expect(screen.getByRole('button', { name: 'Record video' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Review recordings' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Export recordings' })).toBeDisabled();
   await user.press(screen.getByRole('button', { name: 'Record video' }));
   expect(capture).toHaveBeenCalledTimes(1);
+  await user.press(screen.getByRole('button', { name: 'Export recordings' }));
+  expect(exportRecordings).toHaveBeenCalledTimes(1);
 });
 test('failed saves lock the retained draft and retry the identical request without regenerating IDs', async () => {
   const { repository, store, newId } = fixture();

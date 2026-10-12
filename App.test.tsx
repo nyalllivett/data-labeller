@@ -116,3 +116,10 @@ test('opens export from the committed workspace through its stable store', async
   });
   expect(screen.getByText('Export screen')).toBeVisible();
 });
+test.each(['capture', 'review', 'export'] as const)('queued project presses cannot open another hidden workspace while %s is active', async (active) => {
+  await render(<App />); const props = jest.mocked(workspace.ProjectWorkspace).mock.calls[0]![0]; const project = createProject(id(1), 'P');
+  const store = { capture: captureStore, review: reviewStore, export: exportStore }[active];
+  jest.mocked(store.getSnapshot).mockReturnValue({ ...store.getSnapshot(), project } as never);
+  props.onCapture(project); props.onReview(project); props.onExport(project);
+  expect(captureStore.open).not.toHaveBeenCalled(); expect(reviewStore.open).not.toHaveBeenCalled(); expect(exportStore.open).not.toHaveBeenCalled();
+});

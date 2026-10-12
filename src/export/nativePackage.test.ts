@@ -14,7 +14,7 @@ function fixture() {
   const create = jest.fn(async () => { calls.push('create'); if (dirs.has(folder)) throw new Error('already exists'); dirs.add(folder); });
   const remove = jest.fn(async () => { calls.push('discard'); dirs.delete(folder); for (const path of data.keys()) if (path.startsWith(`${folder}/`)) data.delete(path); });
   const directory = jest.fn((): PackageDirectory => ({ uri: folder, get exists() { return dirs.has(folder); }, create, delete: remove }));
-  const write = jest.fn(async (uri: string, text: string) => { calls.push('write'); data.set(uri, Buffer.byteLength(text, 'utf8')); });
+  const write = jest.fn(async (uri: string, text: string) => { calls.push('write'); data.set(uri, new TextEncoder().encode(text).length); });
   const rename = jest.fn(async (uri: string, name: string) => { calls.push('rename'); const final = `${folder}/${name}`; data.set(final, data.get(uri)!); data.delete(uri); });
   const deleteFile = jest.fn(async (uri: string) => { calls.push('remove-manifest'); data.delete(uri); });
   const file = jest.fn((base: string, name: string): PackageFile => {
@@ -38,7 +38,7 @@ test('archives native paths directly, verifies actual UTF-8/media bytes and prom
   const f = fixture(); const result = await f.packagePort.prepare(f.intent, () => false);
   expect(f.zip).toHaveBeenCalledWith([`/cache root/data-labeller-exports/${id(20)}/annotations.json`, `/private/recordings/${id(10)}.mov`], `/cache root/data-labeller-exports/${id(20)}/package.partial.zip`, 0);
   expect(f.write).toHaveBeenCalledWith(`${f.folder}/annotations.json`, f.intent.json);
-  expect(Buffer.byteLength(f.intent.json, 'utf8')).toBeGreaterThan(f.intent.json.length);
+  expect(new TextEncoder().encode(f.intent.json).length).toBeGreaterThan(f.intent.json.length);
   expect(f.calls).toEqual(['create', 'write', 'zip', 'inspect', 'rename', 'remove-manifest']);
   expect(result).toEqual({ id: id(20), uri: `${f.folder}/data-labeller.zip`, byteSize: 500 });
   expect(f.file.mock.calls.every(([base]) => base === f.folder)).toBe(true);
