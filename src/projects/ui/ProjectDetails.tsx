@@ -13,6 +13,7 @@ export function ProjectDetails({
   archive,
   capture,
   review,
+  exportRecordings,
 }: {
   project: Project;
   disabled: boolean;
@@ -23,6 +24,7 @@ export function ProjectDetails({
   archive(label: Label): void;
   capture(): void;
   review(): void;
+  exportRecordings(): void;
 }) {
   return (
     <View style={styles.section}>
@@ -33,6 +35,7 @@ export function ProjectDetails({
       <Button title="Rename project" disabled={disabled} onPress={renameProject} />
       <Button title="Record video" disabled={disabled} onPress={capture} />
       <Button title="Review recordings" disabled={disabled} onPress={review} />
+      <Button title="Export recordings" disabled={disabled} onPress={exportRecordings} />
       <Text accessibilityRole="header" style={styles.heading}>
         Labels
       </Text>

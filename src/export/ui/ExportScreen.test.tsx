@@ -1,0 +1,77 @@
+import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { deferred } from '../../../test/captureFixture';
+import { exportFixture } from '../../../test/exportFixture';
+import { ExportError, type ExportErrorCode } from '../ExportError';
+import type { ExportState } from '../ExportStore';
+import type { PreparedPackage } from '../PackagePort';
+import { ExportScreen } from './ExportScreen';
+
+beforeEach(() => { jest.useFakeTimers(); jest.spyOn(console, 'info').mockImplementation(() => undefined); });
+afterEach(() => { jest.useRealTimers(); });
+test('single/project selection preserves visible exclusions, prepares separately from Share and never claims delivery', async () => {
+  const f = exportFixture(); f.recordings.load.mockResolvedValueOnce({ ...f.workspace, saved: [f.record, { ...f.second, termination: 'interrupted' }] });
+  await f.open(); await render(<ExportScreen store={f.store} />); const user = userEvent.setup();
+  expect(screen.getByRole('radio', { name: 'Export project' })).toBeChecked();
+  expect(screen.getByText(/One unencrypted ZIP contains video files and JSON annotations/)).toBeVisible();
+  expect(screen.getByText(/pending recordings have no committed video included/)).toBeVisible();
+  expect(screen.getByText(/includes interrupted capture/)).toBeVisible(); expect(screen.getByText(/untimed label changes/)).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Share package' })).toBeNull();
+  await user.press(screen.getByRole('radio', { name: 'Export recording 1' }));
+  expect(screen.queryByText(/includes interrupted capture/)).toBeNull();
+  await user.press(screen.getByRole('button', { name: 'Prepare export package' }));
+  expect(f.store.getSnapshot().document?.recordings).toHaveLength(1); expect(f.store.getSnapshot().document?.pendingRecordings).toEqual([]);
+  expect(screen.getByText('Package prepared in local cache. It has not been confirmed delivered.')).toBeVisible();
+  expect(f.sharing.share).not.toHaveBeenCalled();
+  const sheet = deferred<void>(); f.sharing.share.mockReturnValueOnce(sheet.promise);
+  await user.press(screen.getByRole('button', { name: 'Share package' }));
+  expect(screen.getByText(/Opening or waiting for the OS share sheet/)).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled(); expect(screen.getByRole('radio', { name: 'Export project' })).toBeDisabled();
+  await act(async () => { sheet.resolve(); });
+  expect(screen.getByText('Share sheet closed; delivery is not confirmed.')).toBeVisible(); expect(f.packages.discard).not.toHaveBeenCalled();
+  await user.press(screen.getByRole('radio', { name: 'Export project' }));
+  await user.press(screen.getByRole('button', { name: 'Prepare export package' })); expect(f.store.getSnapshot().document?.recordings).toHaveLength(2);
+  await user.press(screen.getByRole('button', { name: 'Back to projects' })); expect(f.store.getSnapshot().phase).toBe('closed'); expect(f.packages.discard).not.toHaveBeenCalled();
+});
+test('Cancel waits for native completion and explicit cleanup retry before another action', async () => {
+  const f = exportFixture(); await f.open(); await render(<ExportScreen store={f.store} />); const user = userEvent.setup();
+  const native = deferred<PreparedPackage>(); f.packages.prepare.mockReturnValueOnce(native.promise);
+  await user.press(screen.getByRole('button', { name: 'Prepare export package' }));
+  expect(screen.getByText('Preparing local package…')).toBeVisible(); await user.press(screen.getByRole('button', { name: 'Cancel preparation' }));
+  expect(screen.getByText(/Cancel requested; finishing the current file/)).toBeVisible(); expect(screen.getByRole('button', { name: 'Back to projects' })).toBeDisabled();
+  expect(f.packages.discard).not.toHaveBeenCalled(); f.packages.discard.mockRejectedValueOnce(new Error('cleanup error'));
+  await act(async () => { native.resolve({ id: f.newId.mock.results[0]!.value, uri: 'file:///cache/package.zip', byteSize: 500 }); });
+  expect(screen.queryByRole('button', { name: 'Share package' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Retry export cleanup' })).toBeEnabled();
+  const cleaning = deferred<void>(); f.packages.discard.mockReturnValueOnce(cleaning.promise);
+  await user.press(screen.getByRole('button', { name: 'Retry export cleanup' })); expect(screen.getByText('Removing incomplete export files…')).toBeVisible();
+  await act(async () => { cleaning.resolve(); }); expect(screen.getByText('Preparation cancelled. Sources are unchanged.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Prepare export package' })).toBeEnabled();
+});
+test('failed preparation retries the same frozen payload; share failure retains output and cache loss offers new preparation', async () => {
+  const f = exportFixture(); await f.open(); await render(<ExportScreen store={f.store} />); const user = userEvent.setup();
+  f.packages.prepare.mockRejectedValueOnce(new Error('storage full')); await user.press(screen.getByRole('button', { name: 'Prepare export package' }));
+  await user.press(screen.getByRole('button', { name: 'Retry package preparation' }));
+  expect(f.packages.prepare.mock.calls[1]![0]).toEqual(f.packages.prepare.mock.calls[0]![0]);
+  f.sharing.share.mockRejectedValueOnce(new ExportError('share-failed')); await user.press(screen.getByRole('button', { name: 'Share package' }));
+  expect(screen.getAllByRole('alert')[0]).toHaveTextContent(/fully close and reopen/);
+  expect(screen.getByRole('button', { name: 'Share package' })).toBeEnabled(); expect(f.packages.discard).toHaveBeenCalledTimes(1);
+  f.packages.available.mockResolvedValueOnce(false); await user.press(screen.getByRole('button', { name: 'Share package' }));
+  expect(screen.getByRole('button', { name: 'Share package' })).toBeDisabled(); expect(screen.getByRole('button', { name: 'Prepare export package' })).toBeEnabled();
+});
+test('library loading/failure and empty saved collection are actionable without excluding pending work silently', async () => {
+  const f = exportFixture(); const reading = deferred<typeof f.workspace>(); f.recordings.load.mockReturnValueOnce(reading.promise);
+  const opened = f.open(); await render(<ExportScreen store={f.store} />); const user = userEvent.setup();
+  expect(screen.getByText('Loading saved recordings…')).toBeVisible();
+  await act(async () => { reading.reject(new Error('read failure')); await opened; });
+  expect(screen.queryByText('No saved video to export. Recover or save a recording first.')).toBeNull();
+  f.recordings.load.mockResolvedValueOnce({ saved: [], pending: [f.pending] });
+  await user.press(screen.getByRole('button', { name: 'Retry export library' }));
+  expect(screen.getByText('No saved video to export. Recover or save a recording first.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Prepare export package' })).toBeDisabled(); expect(screen.getByText(/pending recordings/)).toBeVisible();
+});
+test.each<ExportErrorCode>(['invalid-export', 'source-unavailable', 'package-failed', 'invalid-package', 'cancelled', 'cancel-failed', 'cleanup-failed', 'package-missing', 'sharing-unavailable', 'share-failed'])('renders fixed actionable %s error text', async (error) => {
+  const f = exportFixture(); await f.open();
+  const state: ExportState = { ...f.store.getSnapshot(), workspace: { pending: [], saved: [] }, error };
+  jest.spyOn(f.store, 'getSnapshot').mockReturnValue(state); await render(<ExportScreen store={f.store} />);
+  expect(screen.getByRole('alert')).toBeVisible();
+});

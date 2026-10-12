@@ -39,7 +39,8 @@
           "supportsPictureInPicture": false
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "react-native-zip-archive"
     ]
   }
 }
