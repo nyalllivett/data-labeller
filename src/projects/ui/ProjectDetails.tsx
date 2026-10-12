@@ -11,6 +11,7 @@ export function ProjectDetails({
   addLabel,
   renameLabel,
   archive,
+  capture,
 }: {
   project: Project;
   disabled: boolean;
@@ -19,6 +20,7 @@ export function ProjectDetails({
   addLabel(): void;
   renameLabel(label: Label): void;
   archive(label: Label): void;
+  capture(): void;
 }) {
   return (
     <View style={styles.section}>
@@ -27,6 +29,7 @@ export function ProjectDetails({
         {project.name}
       </Text>
       <Button title="Rename project" disabled={disabled} onPress={renameProject} />
+      <Button title="Record video" disabled={disabled} onPress={capture} />
       <Text accessibilityRole="header" style={styles.heading}>
         Labels
       </Text>

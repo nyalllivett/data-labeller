@@ -41,7 +41,7 @@ async function enterName(name: string) {
 test('creates/renames a project, adds/renames/archives/restores labels with stable IDs, and cancels/no-ops editing', async () => {
   const { repository, store, newId } = fixture();
   const user = userEvent.setup();
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   expect(screen.getByText('No projects yet.')).toBeVisible();
   await user.press(screen.getByRole('button', { name: 'New project' }));
   await enterName('  My project  ');
@@ -82,11 +82,26 @@ test('creates/renames a project, adds/renames/archives/restores labels with stab
   await user.press(screen.getByRole('button', { name: 'Open Renamed' }));
   expect(screen.getByRole('header', { name: 'Renamed' })).toBeVisible();
 });
+
+test('opens capture with the committed project and locks it while a name editor is open', async () => {
+  const { repository, store, newId } = fixture();
+  const project = createProject(id(1), 'Capture project');
+  repository.load.mockResolvedValueOnce({ projects: [project], pending: [] });
+  const capture = jest.fn(); const user = userEvent.setup();
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={capture} />);
+  await user.press(screen.getByRole('button', { name: 'Open Capture project' }));
+  await user.press(screen.getByRole('button', { name: 'Record video' }));
+  expect(capture).toHaveBeenCalledWith(project);
+  await user.press(screen.getByRole('button', { name: 'Rename project' }));
+  expect(screen.getByRole('button', { name: 'Record video' })).toBeDisabled();
+  await user.press(screen.getByRole('button', { name: 'Record video' }));
+  expect(capture).toHaveBeenCalledTimes(1);
+});
 test('failed saves lock the retained draft and retry the identical request without regenerating IDs', async () => {
   const { repository, store, newId } = fixture();
   const user = userEvent.setup();
   repository.save.mockRejectedValueOnce(new Error('PRIVATE storage failure'));
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   await user.press(screen.getByRole('button', { name: 'New project' }));
   await enterName('Retained');
   expect(screen.getByRole('alert')).toBeVisible();
@@ -102,7 +117,7 @@ test('explicit discard clears a failed draft while preserving committed data', a
   const { repository, store, newId } = fixture();
   const user = userEvent.setup();
   repository.save.mockRejectedValueOnce(new Error('failed'));
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   await user.press(screen.getByRole('button', { name: 'New project' }));
   await enterName('Draft');
   await user.press(screen.getByRole('button', { name: 'Discard submitted change' }));
@@ -119,7 +134,7 @@ test('loading/failure never masquerades as an empty workspace, and initializatio
       reject = fail;
     }),
   );
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   expect(screen.getByRole('progressbar')).toBeVisible();
   expect(screen.queryByText('No projects yet.')).not.toBeOnTheScreen();
   await act(async () => {
@@ -135,7 +150,7 @@ test('recovered pending intent blocks unrelated edits and opens the reconciled p
   const project = createProject(id(1), 'Recovered');
   const operation = { id: id(50), expectedRevision: 0, project };
   repository.load.mockResolvedValueOnce({ projects: [], pending: [operation] });
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled();
   await userEvent.setup().press(screen.getByRole('button', { name: 'Retry submitted change' }));
   expect(repository.save).toHaveBeenCalledWith(operation);
@@ -147,7 +162,7 @@ test('failed discard remains visible and its explicit retry clears the editor on
   const user = userEvent.setup();
   repository.save.mockRejectedValueOnce(new Error('save failed'));
   repository.discard.mockRejectedValueOnce(new Error('discard failed'));
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   await user.press(screen.getByRole('button', { name: 'New project' }));
   await enterName('Draft');
   await user.press(screen.getByRole('button', { name: 'Discard submitted change' }));
@@ -168,7 +183,7 @@ test('initialization retry after request-ID failure retains the unstaged editor 
     })
     .mockReturnValue(id(100));
   const store = new ProjectStore(repository, operationId);
-  await render(<ProjectWorkspace store={store} newId={newId} />);
+  await render(<ProjectWorkspace store={store} newId={newId} onCapture={jest.fn()} />);
   const user = userEvent.setup();
   await user.press(screen.getByRole('button', { name: 'New project' }));
   await enterName('Unstaged draft');

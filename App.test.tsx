@@ -1,8 +1,27 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import App from './App';
 import * as workspace from './src/projects/ui/ProjectWorkspace';
 import { newId, projectStore } from './src/projects/runtime';
+import { camera, captureStore } from './src/capture/runtime';
+import * as capture from './src/capture/ui/CaptureScreen';
+import { createProject } from './src/projects/project';
+import { id } from './test/ids';
+
+let mockCaptureChanged: () => void;
+jest.mock('./src/capture/runtime', () => ({
+  camera: {},
+  captureStore: {
+    getSnapshot: jest.fn().mockReturnValue({ project: null }),
+    subscribe: jest.fn((changed) => { mockCaptureChanged = changed; return () => undefined; }),
+    open: jest.fn(),
+  },
+}));
+jest.mock('./src/capture/ui/CaptureScreen', () => {
+  const { Text } = jest.requireActual('react-native');
+  return { CaptureScreen: jest.fn(() => <Text>Capture screen</Text>) };
+});
+beforeEach(() => { jest.mocked(captureStore.getSnapshot).mockReturnValue({ ...captureStore.getSnapshot(), project: null }); });
 
 jest.mock('./src/projects/runtime', () => ({ newId: jest.fn(), projectStore: {} }));
 jest.mock('./src/projects/ui/ProjectWorkspace', () => {
@@ -13,9 +32,22 @@ test('mounts the workspace with a stable store and native ID factory', async () 
   await render(<App />);
   expect(screen.getByText('Project workspace')).toBeVisible();
   expect(workspace.ProjectWorkspace).toHaveBeenCalledWith(
-    { store: projectStore, newId },
+    { store: projectStore, newId, onCapture: expect.any(Function) },
     undefined,
   );
+});
+test('opens the selected project in the stable capture store and renders its capture boundary', async () => {
+  await render(<App />);
+  const props = jest.mocked(workspace.ProjectWorkspace).mock.calls[0]![0];
+  const project = createProject(id(1), 'P');
+  props.onCapture(project);
+  expect(captureStore.open).toHaveBeenCalledWith(project);
+  await act(async () => {
+    jest.mocked(captureStore.getSnapshot).mockReturnValue({ ...captureStore.getSnapshot(), project });
+    mockCaptureChanged();
+  });
+  expect(screen.getByText('Capture screen')).toBeVisible();
+  expect(capture.CaptureScreen).toHaveBeenCalledWith({ store: captureStore, camera }, undefined);
 });
 test('catches screen failure and permits a fresh render', async () => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
